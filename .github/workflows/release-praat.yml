@@ -1,0 +1,160 @@
+name: Release Praat
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - praat
+      - praat_barren
+      - praat.exe
+      - CHANGELOG.md
+  workflow_dispatch:
+
+jobs:
+  build-linux:
+    strategy:
+      matrix:
+        include:
+          - compiler: clang
+            makefile: makefile.defs.linux.pulse-clang
+            binary: praat
+            variant: full
+          - compiler: gcc
+            makefile: makefile.defs.linux.pulse-gcc
+            binary: praat
+            variant: full
+    name: Build Linux ${{ matrix.compiler }}
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y make rsync pkg-config \
+              libgtk-3-dev libasound2-dev libpulse-dev libjack-dev \
+              clang gcc g++ xvfb
+
+      - name: Build Praat
+        run: |
+          cp makefiles/${{ matrix.makefile }} makefile.defs
+          make -j$(nproc)
+          cp praat praat-${{ matrix.compiler }}
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: praat-linux-${{ matrix.compiler }}
+          path: praat-${{ matrix.compiler }}
+
+  build-windows:
+    strategy:
+      matrix:
+        include:
+          - msystem: MINGW64
+            arch: intel64
+            pkgarch: x86_64
+            makefile: makefiles/makefile.defs.msys-mingw64
+            shell: msys2 {0}
+            binary: Praat.exe
+
+          - msystem: MINGW32
+            arch: intel32
+            pkgarch: i686
+            makefile: makefiles/makefile.defs.msys-mingw32
+            shell: msys2 {0}
+            binary: Praat.exe
+
+    name: Build Windows ${{ matrix.arch }}
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install MSYS2 and dependencies
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: ${{ matrix.msystem }}
+          update: true
+          install: >-
+            make
+            rsync
+            pkg-config
+            mingw-w64-${{ matrix.pkgarch }}-gcc
+
+      - name: Build Praat
+        shell: msys2 {0}
+        run: |
+          cp ${{ matrix.makefile }} makefile.defs
+          make -j$(nproc)
+          cp Praat.exe praat-windows-${{ matrix.arch }}.exe
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: praat-windows-${{ matrix.arch }}
+          path: praat-windows-${{ matrix.arch }}.exe
+
+  release:
+    name: 🚀 Publish Release
+    runs-on: ubuntu-latest
+    needs: [build-linux, build-windows]
+    permissions:
+      contents: write
+    steps:
+      - name: 🛎️ Checkout
+        uses: actions/checkout@v4
+
+      # Downloads individuais
+      - name: 📥 Download Linux Clang binary
+        uses: actions/download-artifact@v4
+        with:
+          name: praat-linux-clang
+          path: artifacts/praat-linux-clang
+
+      - name: 📥 Download Linux GCC binary
+        uses: actions/download-artifact@v4
+        with:
+          name: praat-linux-gcc
+          path: artifacts/praat-linux-gcc
+
+      - name: 📥 Download Windows 64-bit binary
+        uses: actions/download-artifact@v4
+        with:
+          name: praat-windows-intel64
+          path: artifacts/praat-windows-intel64
+
+      - name: 📥 Download Windows 32-bit binary
+        uses: actions/download-artifact@v4
+        with:
+          name: praat-windows-intel32
+          path: artifacts/praat-windows-intel32
+
+      - name: 📅 Get current date
+        id: date
+        run: echo "NOW=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+
+      - name: 📦 Package binaries
+        run: |
+          cd artifacts
+          tar -czf praat-linux-clang.tar.gz praat-linux-clang/praat-linux-clang
+          tar -czf praat-linux-gcc.tar.gz praat-linux-gcc/praat-linux-gcc
+          zip praat-windows-intel64.zip praat-windows-intel64/praat-windows-intel64.exe
+          zip praat-windows-intel32.zip praat-windows-intel32/praat-windows-intel32.exe
+          cd ..
+
+      - name: 📤 Upload binaries to release
+        uses: ncipollo/release-action@v1.16.0
+        with:
+          artifacts: |
+            artifacts/praat-linux-clang.tar.gz
+            artifacts/praat-linux-gcc.tar.gz
+            artifacts/praat-windows-intel64.zip
+            artifacts/praat-windows-intel32.zip
+          allowUpdates: true
+          replacesArtifacts: true
+          tag: latest
+          name: "Praat Release ${{ steps.date.outputs.NOW }}"
+          bodyFile: CHANGELOG.md
