@@ -1,0 +1,107 @@
+name: Build and Test Praat
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  Build-Linux:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            compiler: clang
+            makefile: makefile.defs.linux.pulse-clang
+            binary: praat
+            variant: full
+          - os: ubuntu-22.04
+            compiler: gcc
+            makefile: makefile.defs.linux.pulse-gcc
+            binary: praat
+            variant: full
+    name: Linux ${{ matrix.compiler }} (${{ matrix.variant }})
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y make rsync pkg-config \
+              libgtk-3-dev libasound2-dev libpulse-dev libjack-dev \
+              clang gcc g++ xvfb
+
+      - name: Build Praat
+        run: |
+          cp makefiles/${{ matrix.makefile }} makefile.defs
+          make -j$(nproc)
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: praat-${{ matrix.compiler }}-${{ matrix.variant }}-linux
+          path: ${{ matrix.binary }}
+
+#      - name: Run tests
+#        if: matrix.variant == 'full'
+#        run: |
+#          xvfb-run --auto-servernum ./praat --run test/runAllTests.praat
+#          xvfb-run --auto-servernum ./praat --run dwtest/runAllTests.praat
+
+  Build-Windows:
+    strategy:
+      matrix:
+        include:
+          - msystem: MINGW64
+            arch: intel64
+            pkgarch: x86_64
+            makefile: makefiles/makefile.defs.msys-mingw64
+            shell: msys2 {0}
+            binary: Praat.exe
+
+          - msystem: MINGW32
+            arch: intel32
+            pkgarch: i686
+            makefile: makefiles/makefile.defs.msys-mingw32
+            shell: msys2 {0}
+            binary: Praat.exe
+
+    name: Windows ${{ matrix.arch }}
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install MSYS2 and dependencies
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: ${{ matrix.msystem }}
+          update: true
+          install: >-
+            make
+            rsync
+            pkg-config
+            mingw-w64-${{ matrix.pkgarch }}-gcc
+
+      - name: Build Praat
+        shell: msys2 {0}
+        run: |
+          cp ${{ matrix.makefile }} makefile.defs
+          make -j$(nproc)
+
+      - name: Upload Windows binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: praat-windows-${{ matrix.arch }}
+          path: ${{ matrix.binary }}
+
+#      - name: Run tests (Windows)
+#        shell: msys2 {0}
+#        run: |
+#          if [ -f test/runAllTests.praat ]; then
+#            ./Praat.exe --run test/runAllTests.praat
+#            ./Praat.exe --run dwtest/runAllTests.praat
+#          fi

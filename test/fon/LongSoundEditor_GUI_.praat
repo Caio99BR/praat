@@ -11,9 +11,4 @@
 # (2) run the script, and
 # (3) press "View & Edit" manually.
 
-lsID = Open long sound file: "examples/example.wav"
-tgID = To TextGrid: "Mary John bell", "bell"
-selectObject: lsID, tgID
-View & Edit
-Remove
 # ==============
