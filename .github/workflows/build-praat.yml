@@ -12,17 +12,9 @@ jobs:
       matrix:
         include:
           - os: ubuntu-24.04
-            compiler: clang
-            makefile: makefiles/makefile.defs.linux.pulse-clang
-            binary: praat
-          - os: ubuntu-24.04
             compiler: gcc
             makefile: makefiles/makefile.defs.linux.pulse-gcc
             binary: praat
-          - os: ubuntu-24.04
-            arch: mingw64
-            makefile: makefiles/makefile.defs.msys-mingw64
-            binary: Praat.exe
           - os: ubuntu-24.04
             arch: mingw32
             makefile: makefiles/makefile.defs.msys-mingw32
