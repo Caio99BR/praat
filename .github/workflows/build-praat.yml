@@ -4,8 +4,7 @@ on:
   push:
     branches:
       - '**'
-  pull_request:
-  workflow_dispatch:
+  workflow_call:
 
 jobs:
   Build-Linux:
@@ -25,27 +24,28 @@ jobs:
     name: Linux ${{ matrix.compiler }} (${{ matrix.variant }})
     runs-on: ${{ matrix.os }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Cache APT packages
+      - name: Cache ccache directory
         uses: actions/cache@v4
         with:
-          path: /var/cache/apt
-          key: ${{ runner.os }}-apt-${{ hashFiles('**/build_praat.yml') }}
+          path: ~/.ccache
+          key: ${{ runner.os }}-${{ matrix.compiler }}-ccache
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.compiler }}-ccache
 
       - name: Install dependencies
         run: |
           sudo apt update
           sudo apt install -y make rsync pkg-config \
               libgtk-3-dev libasound2-dev libpulse-dev libjack-dev \
-              clang gcc g++ xvfb
+              clang gcc g++ xvfb ccache
 
-      - name: Cache build objects
-        uses: actions/cache@v4
-        with:
-          path: obj
-          key: ${{ runner.os }}-build-${{ matrix.compiler }}-${{ hashFiles('**/*.cpp', 'makefiles/**/*') }}
+      - name: Configure ccache
+        run: |
+          export CC="ccache gcc"
+          export CXX="ccache g++"
+          ccache --max-size=5G
 
       - name: Build Praat
         run: |
@@ -55,7 +55,7 @@ jobs:
       - name: Upload binary
         uses: actions/upload-artifact@v4
         with:
-          name: praat-${{ matrix.compiler }}-${{ matrix.variant }}-linux
+          name: praat-linux-${{ matrix.compiler }}
           path: ${{ matrix.binary }}
 
   Build-Windows:
@@ -80,10 +80,9 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup MSYS2 and dependencies (with automatic caching)
+      - name: Install MSYS2, dependencies and ccache
         uses: msys2/setup-msys2@v2
         with:
           msystem: ${{ matrix.msystem }}
@@ -93,6 +92,14 @@ jobs:
             rsync
             pkg-config
             mingw-w64-${{ matrix.pkgarch }}-gcc
+            ccache
+
+      - name: Configure ccache (Windows)
+        shell: msys2 {0}
+        run: |
+          export CC="ccache gcc"
+          export CXX="ccache g++"
+          ccache --max-size=5G
 
       - name: Build Praat
         shell: msys2 {0}
@@ -100,7 +107,7 @@ jobs:
           cp ${{ matrix.makefile }} makefile.defs
           make -j$(nproc)
 
-      - name: Upload Windows binary
+      - name: Upload binary
         uses: actions/upload-artifact@v4
         with:
           name: praat-windows-${{ matrix.arch }}
