@@ -47,4 +47,3 @@ jobs:
           replacesArtifacts: true
           tag: latest
           name: "Praat Release ${{ steps.date.outputs.NOW }}"
-          bodyFile: CHANGELOG.md
