@@ -1,9 +1,9 @@
-name: Build and Test Praat
+name: Building Praat!
 
 on:
   push:
   pull_request:
-  workflow_dispatch:
+  workflow_call:
 
 jobs:
   Build-Linux:
@@ -11,97 +11,132 @@ jobs:
       matrix:
         include:
           - os: ubuntu-22.04
+            pkgarch: clang
+            version: clang
+            targetos: linux
+            ccache_path: sccache
             compiler: clang
+            compilerpp: clang++
             makefile: makefile.defs.linux.pulse-clang
             binary: praat
-            variant: full
           - os: ubuntu-22.04
+            pkgarch: clang_barren
+            version: clang_barren
+            targetos: linux
+            ccache_path: sccache
+            compiler: clang
+            compilerpp: clang++
+            makefile: makefile.defs.linux.pulse-clang
+            binary: praat
+          - os: ubuntu-22.04
+            pkgarch: gcc
+            version: gcc
+            targetos: linux
+            ccache_path: sccache
             compiler: gcc
+            compilerpp: g++
             makefile: makefile.defs.linux.pulse-gcc
             binary: praat
-            variant: full
-    name: Linux ${{ matrix.compiler }} (${{ matrix.variant }})
+          - os: ubuntu-22.04
+            pkgarch: gcc_barren
+            version: gcc_barren
+            targetos: linux
+            ccache_path: sccache
+            compiler: gcc
+            compilerpp: g++
+            makefile: makefile.defs.linux.pulse-gcc
+            binary: praat
+
+    name: Linux (${{ matrix.compiler }}) (${{ matrix.binary }})
     runs-on: ${{ matrix.os }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+
+      - uses: hendrikmuhs/ccache-action@main
+        with:
+          key: ${{ runner.os }}-${{ matrix.pkgarch }}-ccache
+          variant: sccache
 
       - name: Install dependencies
-        run: |
-          sudo apt update
-          sudo apt install -y make rsync pkg-config \
-              libgtk-3-dev libasound2-dev libpulse-dev libjack-dev \
-              clang gcc g++ xvfb
+        run: sudo apt install -y make rsync pkg-config libgtk-3-dev libasound2-dev libpulse-dev libjack-dev clang gcc g++ binutils xvfb
 
       - name: Build Praat
         run: |
           cp makefiles/${{ matrix.makefile }} makefile.defs
-          make -j$(nproc)
+          EXTRA=""
+          [[ "${{ matrix.binary }}" == "praat_barren" ]] && EXTRA="BARREN=1"
+          make -j$(nproc) CC="${{ matrix.ccache_path }} ${{ matrix.compiler }}" CXX="${{ matrix.ccache_path }} ${{ matrix.compilerpp }}" $EXTRA
+          cp ${{ matrix.binary }} Praat-${{ matrix.targetos }}_${{ matrix.version }}.exe
 
       - name: Upload binary
         uses: actions/upload-artifact@v4
         with:
-          name: praat-${{ matrix.compiler }}-${{ matrix.variant }}-linux
-          path: ${{ matrix.binary }}
-
-#      - name: Run tests
-#        if: matrix.variant == 'full'
-#        run: |
-#          xvfb-run --auto-servernum ./praat --run test/runAllTests.praat
-#          xvfb-run --auto-servernum ./praat --run dwtest/runAllTests.praat
+          name: Praat for ${{ matrix.targetos }} ${{ matrix.version }}
+          path: Praat-${{ matrix.targetos }}_${{ matrix.version }}.exe
 
   Build-Windows:
     strategy:
       matrix:
         include:
           - msystem: MINGW64
-            arch: intel64
-            pkgarch: x86_64
-            makefile: makefiles/makefile.defs.msys-mingw64
             shell: msys2 {0}
+            pkgarch: x86_64
+            version: intel64
+            targetos: windows
+            ccache_path: '$USERPROFILE/.cargo/bin/sccache.exe'
+            compiler: gcc
+            compilerpp: g++
+            makefile: makefile.defs.msys-mingw64
             binary: Praat.exe
 
           - msystem: MINGW32
-            arch: intel32
-            pkgarch: i686
-            makefile: makefiles/makefile.defs.msys-mingw32
             shell: msys2 {0}
+            pkgarch: i686
+            version: intel32
+            targetos: windows
+            ccache_path: '$USERPROFILE/.cargo/bin/sccache.exe'
+            compiler: gcc
+            compilerpp: g++
+            makefile: makefile.defs.msys-mingw32
             binary: Praat.exe
 
-    name: Windows ${{ matrix.arch }}
+    name: Windows (${{ matrix.pkgarch }})
     runs-on: windows-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+
+      - uses: hendrikmuhs/ccache-action@main
+        with:
+          key: ${{ runner.os }}-${{ matrix.pkgarch }}-ccache
+          variant: sccache
+          create-symlink: true
+
+      - name: Cache MSYS2 packages
+        uses: actions/cache@v4
+        with:
+          path: C:\msys64\var\cache
+          key: msys2-cache-${{ runner.os }}-${{ matrix.msystem }}
+          restore-keys: |
+            msys2-cache-${{ runner.os }}-
 
       - name: Install MSYS2 and dependencies
         uses: msys2/setup-msys2@v2
         with:
           msystem: ${{ matrix.msystem }}
-          update: true
-          install: >-
-            make
-            rsync
-            pkg-config
-            mingw-w64-${{ matrix.pkgarch }}-gcc
+          install: 'make rsync pkg-config binutils unzip curl mingw-w64-${{ matrix.pkgarch }}-gcc'
 
       - name: Build Praat
         shell: msys2 {0}
         run: |
-          cp ${{ matrix.makefile }} makefile.defs
-          make -j$(nproc)
+          cp makefiles/${{ matrix.makefile }} makefile.defs
+          EXTRA=""
+          [[ "${{ matrix.binary }}" == "praat_barren" ]] && EXTRA="BARREN=1"
+          make -j$(nproc) CC="${{ matrix.ccache_path }} ${{ matrix.compiler }}" CXX="${{ matrix.ccache_path }} ${{ matrix.compilerpp }}" $EXTRA
+          cp ${{ matrix.binary }} Praat-${{ matrix.targetos }}_${{ matrix.version }}.exe
 
-      - name: Upload Windows binary
+      - name: Upload binary
         uses: actions/upload-artifact@v4
         with:
-          name: praat-windows-${{ matrix.arch }}
-          path: ${{ matrix.binary }}
-
-#      - name: Run tests (Windows)
-#        shell: msys2 {0}
-#        run: |
-#          if [ -f test/runAllTests.praat ]; then
-#            ./Praat.exe --run test/runAllTests.praat
-#            ./Praat.exe --run dwtest/runAllTests.praat
-#          fi
+          name: Praat for ${{ matrix.targetos }} ${{ matrix.version }}
+          path: Praat-${{ matrix.targetos }}_${{ matrix.version }}.exe

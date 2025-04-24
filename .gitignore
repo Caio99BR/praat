@@ -31,3 +31,6 @@ Praat.exe
 .Rdata
 .Rhistory
 .Rproj.user
+
+# output directory
+output/*
