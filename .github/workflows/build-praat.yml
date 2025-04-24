@@ -2,6 +2,8 @@ name: Build and Test Praat
 
 on:
   push:
+    branches:
+      - '**'
   pull_request:
   workflow_dispatch:
 
@@ -26,12 +28,24 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Cache APT packages
+        uses: actions/cache@v4
+        with:
+          path: /var/cache/apt
+          key: ${{ runner.os }}-apt-${{ hashFiles('**/build_praat.yml') }}
+
       - name: Install dependencies
         run: |
           sudo apt update
           sudo apt install -y make rsync pkg-config \
               libgtk-3-dev libasound2-dev libpulse-dev libjack-dev \
               clang gcc g++ xvfb
+
+      - name: Cache build objects
+        uses: actions/cache@v4
+        with:
+          path: obj
+          key: ${{ runner.os }}-build-${{ matrix.compiler }}-${{ hashFiles('**/*.cpp', 'makefiles/**/*') }}
 
       - name: Build Praat
         run: |
@@ -43,12 +57,6 @@ jobs:
         with:
           name: praat-${{ matrix.compiler }}-${{ matrix.variant }}-linux
           path: ${{ matrix.binary }}
-
-#      - name: Run tests
-#        if: matrix.variant == 'full'
-#        run: |
-#          xvfb-run --auto-servernum ./praat --run test/runAllTests.praat
-#          xvfb-run --auto-servernum ./praat --run dwtest/runAllTests.praat
 
   Build-Windows:
     strategy:
@@ -75,7 +83,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install MSYS2 and dependencies
+      - name: Setup MSYS2 and dependencies (with automatic caching)
         uses: msys2/setup-msys2@v2
         with:
           msystem: ${{ matrix.msystem }}
@@ -97,11 +105,3 @@ jobs:
         with:
           name: praat-windows-${{ matrix.arch }}
           path: ${{ matrix.binary }}
-
-#      - name: Run tests (Windows)
-#        shell: msys2 {0}
-#        run: |
-#          if [ -f test/runAllTests.praat ]; then
-#            ./Praat.exe --run test/runAllTests.praat
-#            ./Praat.exe --run dwtest/runAllTests.praat
-#          fi

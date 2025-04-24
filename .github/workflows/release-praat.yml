@@ -18,11 +18,9 @@ jobs:
         include:
           - compiler: clang
             makefile: makefile.defs.linux.pulse-clang
-            binary: praat
             variant: full
           - compiler: gcc
             makefile: makefile.defs.linux.pulse-gcc
-            binary: praat
             variant: full
     name: Build Linux ${{ matrix.compiler }}
     runs-on: ubuntu-22.04
@@ -30,12 +28,24 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Cache APT packages
+        uses: actions/cache@v4
+        with:
+          path: /var/cache/apt
+          key: ${{ runner.os }}-apt-${{ hashFiles('**/release_praat.yml') }}
+
       - name: Install dependencies
         run: |
           sudo apt update
           sudo apt install -y make rsync pkg-config \
               libgtk-3-dev libasound2-dev libpulse-dev libjack-dev \
               clang gcc g++ xvfb
+
+      - name: Cache build objects
+        uses: actions/cache@v4
+        with:
+          path: obj
+          key: ${{ runner.os }}-build-${{ matrix.compiler }}-${{ hashFiles('**/*.cpp', 'makefiles/**/*') }}
 
       - name: Build Praat
         run: |
@@ -57,15 +67,11 @@ jobs:
             arch: intel64
             pkgarch: x86_64
             makefile: makefiles/makefile.defs.msys-mingw64
-            shell: msys2 {0}
-            binary: Praat.exe
 
           - msystem: MINGW32
             arch: intel32
             pkgarch: i686
             makefile: makefiles/makefile.defs.msys-mingw32
-            shell: msys2 {0}
-            binary: Praat.exe
 
     name: Build Windows ${{ matrix.arch }}
     runs-on: windows-latest
@@ -73,7 +79,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install MSYS2 and dependencies
+      - name: Setup MSYS2 and dependencies (with automatic cache)
         uses: msys2/setup-msys2@v2
         with:
           msystem: ${{ matrix.msystem }}
@@ -104,29 +110,28 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: 🛎️ Checkout
+      - name: Checkout
         uses: actions/checkout@v4
 
-      # Downloads individuais
-      - name: 📥 Download Linux Clang binary
+      - name: Download Linux Clang binary
         uses: actions/download-artifact@v4
         with:
           name: praat-linux-clang
           path: artifacts/praat-linux-clang
 
-      - name: 📥 Download Linux GCC binary
+      - name: Download Linux GCC binary
         uses: actions/download-artifact@v4
         with:
           name: praat-linux-gcc
           path: artifacts/praat-linux-gcc
 
-      - name: 📥 Download Windows 64-bit binary
+      - name: Download Windows 64-bit binary
         uses: actions/download-artifact@v4
         with:
           name: praat-windows-intel64
           path: artifacts/praat-windows-intel64
 
-      - name: 📥 Download Windows 32-bit binary
+      - name: Download Windows 32-bit binary
         uses: actions/download-artifact@v4
         with:
           name: praat-windows-intel32
@@ -136,7 +141,7 @@ jobs:
         id: date
         run: echo "NOW=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
 
-      - name: 📦 Package binaries
+      - name: Package binaries
         run: |
           cd artifacts
           tar -czf praat-linux-clang.tar.gz praat-linux-clang/praat-linux-clang
@@ -145,7 +150,7 @@ jobs:
           zip praat-windows-intel32.zip praat-windows-intel32/praat-windows-intel32.exe
           cd ..
 
-      - name: 📤 Upload binaries to release
+      - name: Upload binaries to release
         uses: ncipollo/release-action@v1.16.0
         with:
           artifacts: |
