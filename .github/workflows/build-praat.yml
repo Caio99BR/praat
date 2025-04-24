@@ -10,51 +10,43 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: ubuntu-22.04
-            pkgarch: clang
-            version: clang
-            targetos: linux
+          - version: clang
             ccache_path: sccache
             compiler: clang
             compilerpp: clang++
             makefile: makefile.defs.linux.pulse-clang
             binary: praat
-          - os: ubuntu-22.04
-            pkgarch: clang_barren
-            version: clang_barren
             targetos: linux
+          - version: clang_barren
             ccache_path: sccache
             compiler: clang
             compilerpp: clang++
             makefile: makefile.defs.linux.pulse-clang
             binary: praat
-          - os: ubuntu-22.04
-            pkgarch: gcc
-            version: gcc
             targetos: linux
+          - version: gcc
             ccache_path: sccache
             compiler: gcc
             compilerpp: g++
             makefile: makefile.defs.linux.pulse-gcc
             binary: praat
-          - os: ubuntu-22.04
-            pkgarch: gcc_barren
-            version: gcc_barren
             targetos: linux
+          - version: gcc_barren
             ccache_path: sccache
             compiler: gcc
             compilerpp: g++
             makefile: makefile.defs.linux.pulse-gcc
             binary: praat
+            targetos: linux
 
     name: Linux (${{ matrix.compiler }}) (${{ matrix.binary }})
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
 
       - uses: hendrikmuhs/ccache-action@main
         with:
-          key: ${{ runner.os }}-${{ matrix.pkgarch }}-ccache
+          key: ${{ runner.os }}-${{ matrix.version }}-ccache
           variant: sccache
 
       - name: Install dependencies
@@ -63,8 +55,7 @@ jobs:
       - name: Build Praat
         run: |
           cp makefiles/${{ matrix.makefile }} makefile.defs
-          EXTRA=""
-          [[ "${{ matrix.binary }}" == "praat_barren" ]] && EXTRA="BARREN=1"
+          [[ "${{ matrix.version }}" == *barren* ]] && EXTRA="BARREN=1" || EXTRA=""
           make -j$(nproc) CC="${{ matrix.ccache_path }} ${{ matrix.compiler }}" CXX="${{ matrix.ccache_path }} ${{ matrix.compilerpp }}" $EXTRA
           cp ${{ matrix.binary }} Praat-${{ matrix.targetos }}_${{ matrix.version }}.exe
 
@@ -78,61 +69,44 @@ jobs:
     strategy:
       matrix:
         include:
-          - msystem: MINGW64
-            shell: msys2 {0}
-            pkgarch: x86_64
-            version: intel64
+          - version: intel64
             targetos: windows
-            ccache_path: '$USERPROFILE/.cargo/bin/sccache.exe'
-            compiler: gcc
-            compilerpp: g++
-            makefile: makefile.defs.msys-mingw64
+            ccache_path: sccache
+            toolchain: llvm-mingw-20250417-ucrt-ubuntu-22.04-x86_64
+            prefix: x86_64-w64-mingw32-
+            makefile: makefile.defs.msys-clang
+            binary: Praat.exe
+          - version: intel32
+            targetos: windows
+            ccache_path: sccache
+            toolchain: llvm-mingw-20250417-ucrt-ubuntu-22.04-x86_64
+            prefix: i686-w64-mingw32-
+            makefile: makefile.defs.msys-clang
             binary: Praat.exe
 
-          - msystem: MINGW32
-            shell: msys2 {0}
-            pkgarch: i686
-            version: intel32
-            targetos: windows
-            ccache_path: '$USERPROFILE/.cargo/bin/sccache.exe'
-            compiler: gcc
-            compilerpp: g++
-            makefile: makefile.defs.msys-mingw32
-            binary: Praat.exe
-
-    name: Windows (${{ matrix.pkgarch }})
-    runs-on: windows-latest
-
+    name: Windows (${{ matrix.version }})
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
 
       - uses: hendrikmuhs/ccache-action@main
         with:
-          key: ${{ runner.os }}-${{ matrix.pkgarch }}-ccache
+          key: ${{ runner.os }}-${{ matrix.version }}-ccache
           variant: sccache
-          create-symlink: true
 
-      - name: Cache MSYS2 packages
-        uses: actions/cache@v4
-        with:
-          path: C:\msys64\var\cache
-          key: msys2-cache-${{ runner.os }}-${{ matrix.msystem }}
-          restore-keys: |
-            msys2-cache-${{ runner.os }}-
+      - name: Install dependencies
+        run: |
+          sudo apt-get update && sudo apt-get install -y make rsync pkg-config binutils-mingw-w64 g++-mingw-w64 mingw-w64 wget
 
-      - name: Install MSYS2 and dependencies
-        uses: msys2/setup-msys2@v2
-        with:
-          msystem: ${{ matrix.msystem }}
-          install: 'make rsync pkg-config binutils unzip curl mingw-w64-${{ matrix.pkgarch }}-gcc'
+      - name: Download and Install LLVM-Mingw toolchain
+        run: |
+          wget https://github.com/mstorsjo/llvm-mingw/releases/download/20250417/${{ matrix.toolchain }}.tar.xz
+          tar -xvf ${{ matrix.toolchain }}.tar.xz
 
       - name: Build Praat
-        shell: msys2 {0}
         run: |
           cp makefiles/${{ matrix.makefile }} makefile.defs
-          EXTRA=""
-          [[ "${{ matrix.binary }}" == "praat_barren" ]] && EXTRA="BARREN=1"
-          make -j$(nproc) CC="${{ matrix.ccache_path }} ${{ matrix.compiler }}" CXX="${{ matrix.ccache_path }} ${{ matrix.compilerpp }}" $EXTRA
+          make -j$(nproc) PREFIX="$(pwd)/${{ matrix.toolchain }}/bin/${{ matrix.prefix }}" CC="${{ matrix.ccache_path }} $(pwd)/${{ matrix.toolchain }}/bin/${{ matrix.prefix }}clang" CXX="${{ matrix.ccache_path }} $(pwd)/${{ matrix.toolchain }}/bin/${{ matrix.prefix }}clang++"
           cp ${{ matrix.binary }} Praat-${{ matrix.targetos }}_${{ matrix.version }}.exe
 
       - name: Upload binary
