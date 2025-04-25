@@ -6,66 +6,7 @@ on:
   workflow_call:
 
 jobs:
-  Build-Linux:
-    strategy:
-      matrix:
-        include:
-          - version: clang
-            ccache_path: sccache
-            compiler: clang
-            compilerpp: clang++
-            makefile: makefile.defs.linux.pulse-clang
-            binary: praat
-            targetos: linux
-          - version: clang_barren
-            ccache_path: sccache
-            compiler: clang
-            compilerpp: clang++
-            makefile: makefile.defs.linux.pulse-clang
-            binary: praat
-            targetos: linux
-          - version: gcc
-            ccache_path: sccache
-            compiler: gcc
-            compilerpp: g++
-            makefile: makefile.defs.linux.pulse-gcc
-            binary: praat
-            targetos: linux
-          - version: gcc_barren
-            ccache_path: sccache
-            compiler: gcc
-            compilerpp: g++
-            makefile: makefile.defs.linux.pulse-gcc
-            binary: praat
-            targetos: linux
-
-    name: Linux (${{ matrix.compiler }}) (${{ matrix.binary }})
-    runs-on: ubuntu-22.04
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: hendrikmuhs/ccache-action@main
-        with:
-          key: ${{ runner.os }}-${{ matrix.version }}-ccache
-          variant: sccache
-
-      - name: Install dependencies
-        run: sudo apt install -y make rsync pkg-config libgtk-3-dev libasound2-dev libpulse-dev libjack-dev clang gcc g++ binutils xvfb
-
-      - name: Build Praat
-        run: |
-          cp makefiles/${{ matrix.makefile }} makefile.defs
-          [[ "${{ matrix.version }}" == *barren* ]] && EXTRA="BARREN=1" || EXTRA=""
-          make -j$(nproc) CC="${{ matrix.ccache_path }} ${{ matrix.compiler }}" CXX="${{ matrix.ccache_path }} ${{ matrix.compilerpp }}" $EXTRA
-          cp ${{ matrix.binary }} Praat-${{ matrix.targetos }}_${{ matrix.version }}.exe
-
-      - name: Upload binary
-        uses: actions/upload-artifact@v4
-        with:
-          name: Praat for ${{ matrix.targetos }} ${{ matrix.version }}
-          path: Praat-${{ matrix.targetos }}_${{ matrix.version }}.exe
-
-  Build-Windows:
+  Build:
     strategy:
       matrix:
         include:
@@ -76,6 +17,7 @@ jobs:
             prefix: x86_64-w64-mingw32-
             makefile: makefile.defs.msys-clang
             binary: Praat.exe
+            extension: .exe
           - version: intel32
             targetos: windows
             ccache_path: sccache
@@ -83,8 +25,25 @@ jobs:
             prefix: i686-w64-mingw32-
             makefile: makefile.defs.msys-clang
             binary: Praat.exe
+            extension: .exe
+          - version: clang
+            targetos: linux
+            ccache_path: sccache
+            toolchain: llvm-mingw-20250417-ucrt-ubuntu-22.04-x86_64
+            prefix: ""
+            makefile: makefile.defs.linux.pulse-clang
+            binary: praat
+            extension: ""
+          - version: clang_barren
+            targetos: linux
+            ccache_path: sccache
+            toolchain: llvm-mingw-20250417-ucrt-ubuntu-22.04-x86_64
+            prefix: ""
+            makefile: makefile.defs.linux.pulse-clang
+            binary: praat
+            extension: ""
 
-    name: Windows (${{ matrix.version }})
+    name: Praat (${{ matrix.version }}) (${{ matrix.binary }})
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
@@ -95,8 +54,7 @@ jobs:
           variant: sccache
 
       - name: Install dependencies
-        run: |
-          sudo apt-get update && sudo apt-get install -y make rsync pkg-config binutils-mingw-w64 g++-mingw-w64 mingw-w64 wget
+        run: sudo apt install -y make rsync pkg-config libgtk-3-dev libasound2-dev libpulse-dev libjack-dev clang gcc g++ binutils binutils-mingw-w64 xvfb wget
 
       - name: Download and Install LLVM-Mingw toolchain
         run: |
@@ -106,11 +64,14 @@ jobs:
       - name: Build Praat
         run: |
           cp makefiles/${{ matrix.makefile }} makefile.defs
-          make -j$(nproc) PREFIX="$(pwd)/${{ matrix.toolchain }}/bin/${{ matrix.prefix }}" CC="${{ matrix.ccache_path }} $(pwd)/${{ matrix.toolchain }}/bin/${{ matrix.prefix }}clang" CXX="${{ matrix.ccache_path }} $(pwd)/${{ matrix.toolchain }}/bin/${{ matrix.prefix }}clang++"
-          cp ${{ matrix.binary }} Praat-${{ matrix.targetos }}_${{ matrix.version }}.exe
+          make -j$(nproc) \
+            PREFIX="$(pwd)/${{ matrix.toolchain }}/bin/${{ matrix.prefix }}" \
+            CC="${{ matrix.ccache_path }} $(pwd)/${{ matrix.toolchain }}/bin/${{ matrix.prefix }}clang" \
+            CXX="${{ matrix.ccache_path }} $(pwd)/${{ matrix.toolchain }}/bin/${{ matrix.prefix }}clang++"
+          cp ${{ matrix.binary }} Praat-${{ matrix.targetos }}_${{ matrix.version }}${{ matrix.extension }}
 
       - name: Upload binary
         uses: actions/upload-artifact@v4
         with:
           name: Praat for ${{ matrix.targetos }} ${{ matrix.version }}
-          path: Praat-${{ matrix.targetos }}_${{ matrix.version }}.exe
+          path: Praat-${{ matrix.targetos }}_${{ matrix.version }}${{ matrix.extension }}
