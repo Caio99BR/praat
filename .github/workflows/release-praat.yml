@@ -39,7 +39,7 @@ jobs:
       - name: 📥 Upload binaries to release
         uses: ncipollo/release-action@v1.16.0
         with:
-          artifacts: artifacts/*
+          artifacts: artifacts/*/*
           allowUpdates: true
           replacesArtifacts: true
           tag: latest
