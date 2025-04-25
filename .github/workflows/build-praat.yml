@@ -10,10 +10,18 @@ jobs:
     strategy:
       matrix:
         include:
-          - version: intel64
+          - version: aarch64
             targetos: windows
             ccache_path: sccache
-            toolchain: llvm-mingw-20250417-ucrt-ubuntu-22.04-x86_64
+            toolchain: llvm-mingw-nightly-ucrt-ubuntu-22.04-x86_64
+            prefix: aarch64-w64-mingw32-
+            makefile: makefile.defs.msys-clang
+            binary: Praat.exe
+            extension: .exe
+          - version: x86_64
+            targetos: windows
+            ccache_path: sccache
+            toolchain: llvm-mingw-nightly-ucrt-ubuntu-22.04-x86_64
             prefix: x86_64-w64-mingw32-
             makefile: makefile.defs.msys-clang
             binary: Praat.exe
@@ -21,7 +29,7 @@ jobs:
           - version: intel32
             targetos: windows
             ccache_path: sccache
-            toolchain: llvm-mingw-20250417-ucrt-ubuntu-22.04-x86_64
+            toolchain: llvm-mingw-nightly-ucrt-ubuntu-22.04-x86_64
             prefix: i686-w64-mingw32-
             makefile: makefile.defs.msys-clang
             binary: Praat.exe
@@ -29,7 +37,7 @@ jobs:
           - version: clang
             targetos: linux
             ccache_path: sccache
-            toolchain: llvm-mingw-20250417-ucrt-ubuntu-22.04-x86_64
+            toolchain: llvm-mingw-nightly-ucrt-ubuntu-22.04-x86_64
             prefix: ""
             makefile: makefile.defs.linux.pulse-clang
             binary: praat
@@ -37,7 +45,7 @@ jobs:
           - version: clang_barren
             targetos: linux
             ccache_path: sccache
-            toolchain: llvm-mingw-20250417-ucrt-ubuntu-22.04-x86_64
+            toolchain: llvm-mingw-nightly-ucrt-ubuntu-22.04-x86_64
             prefix: ""
             makefile: makefile.defs.linux.pulse-clang
             binary: praat
@@ -58,7 +66,7 @@ jobs:
 
       - name: Download and Install LLVM-Mingw toolchain
         run: |
-          wget https://github.com/mstorsjo/llvm-mingw/releases/download/20250417/${{ matrix.toolchain }}.tar.xz
+          wget https://github.com/mstorsjo/llvm-mingw/releases/download/nightly/${{ matrix.toolchain }}.tar.xz
           tar -xvf ${{ matrix.toolchain }}.tar.xz
 
       - name: Build Praat
