@@ -1,10 +1,10 @@
 /* praat_uvafon_init.cpp
  *
- * Copyright (C) 1992-2024 Paul Boersma
+ * Copyright (C) 1992-2025 Paul Boersma
  *
  * This code is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or (at
+ * the Free Software Foundation; either version 3 of the License, or (at
  * your option) any later version.
  *
  * This code is distributed in the hope that it will be useful, but
@@ -53,7 +53,7 @@
 #include "Strings_extensions.h"
 #include "StringsEditor.h"
 #include "TableEditor.h"
-#include "TextGrid.h"
+#include "TextGrid_Sound.h"
 #include "VocalTract.h"
 #include "VoiceAnalysis.h"
 #include "WordList.h"
@@ -934,14 +934,6 @@ DIRECT (NEW1_Intensity_PointProcess_to_IntensityTier) {
 	CONVERT_ONE_AND_ONE_TO_ONE (Intensity, PointProcess)
 		autoIntensityTier result = Intensity_PointProcess_to_IntensityTier (me, you);
 	CONVERT_ONE_AND_ONE_TO_ONE_END (my name.get())
-}
-
-// MARK: - INTERVALTIER, the remainder is in praat_TextGrid_init.cpp
-
-FORM_READ (READ1_IntervalTier_readFromXwaves, U"Read IntervalTier from Xwaves", 0, true) {
-	READ_ONE
-		autoIntervalTier result = IntervalTier_readFromXwaves (file);
-	READ_ONE_END
 }
 
 // MARK: - LTAS
@@ -2835,18 +2827,41 @@ DO
 	CREATE_ONE_END (allTierNames)
 }
 
-FORM_READ (READ1_TextGrid_readFromEspsLabelFile, U"Read TextGrid from ESPS label file", nullptr, true) {
-	READ_ONE
-		autoTextGrid result = TextGrid_readFromEspsLabelFile (file);
-	READ_ONE_END
+FORM (READ1_TextGrid_readFromEspsLabelFile, U"Read TextGrid from ESPS label file", U"Read TextGrid from ESPS label file...") {
+	INFILE (soundFilePath, U"Sound file path", U"")
+	BOOLEAN (tiersArePointTiers, U"Tiers are point tiers", false)
+	INTEGER (overrideNumberOfTiers, U"Override number of tiers", U"0 (= don't override)")
+	OK
+DO
+	CREATE_ONE
+		structMelderFile file { };
+		Melder_relativePathToFile (soundFilePath, & file);
+		autoTextGrid result = TextGrid_readFromEspsLabelFile (& file, tiersArePointTiers, overrideNumberOfTiers);
+	CREATE_ONE_END (U"")
 }
 
-// MARK: - TEXTTIER; the remainder is in praat_TextGrid_init.cpp *****/
+FORM (NEW_Sound_readWithAdjacentAnnotationFiles_buckeye, U"Read with adjacent annotations (Buckeye)", U"Read with adjacent annotation files (Buckeye)...") {
+	INFILE (soundFileName, U"Sound file name", U"/Volumes/Buckeye/s01/s0101a/s0101a.wav")
+	OK
+DO
+	CREATE_MULTIPLE
+		autoTextGrid textgrid;
+		autoSound sound = Sound_readWithAdjacentAnnotationFiles_buckeye (soundFileName, & textgrid);
+		praat_new (sound.move());
+		praat_new (textgrid.move());
+	CREATE_MULTIPLE_END
+}
 
-FORM_READ (READ1_TextTier_readFromXwaves, U"Read TextTier from Xwaves", nullptr, true) {
-	READ_ONE
-		autoTextTier result = TextTier_readFromXwaves (file);
-	READ_ONE_END
+FORM (NEW_Sound_readWithAdjacentAnnotationFiles_timit, U"Read with adjacent annotations (TIMIT)", U"Read with adjacent annotation files (TIMIT)...") {
+	INFILE (soundFileName, U"Sound file name", U"/Volumes/TIMIT/train/dr1/fcjf0/sa1.wav")
+	OK
+DO
+	CREATE_MULTIPLE
+		autoTextGrid textgrid;
+		autoSound sound = Sound_readWithAdjacentAnnotationFiles_timit (soundFileName, & textgrid);
+		praat_new (sound.move());
+		praat_new (textgrid.move());
+	CREATE_MULTIPLE_END
 }
 
 // MARK: - TRANSITION
@@ -3048,12 +3063,13 @@ void praat_uvafon_init () {
 
 	praat_addMenuCommand (U"Objects", U"Open", U"-- read tier --", nullptr, 0, nullptr);
 	praat_addMenuCommand (U"Objects", U"Open", U"Read from special annotation file...", nullptr, 0, nullptr);
-		praat_addMenuCommand (U"Objects", U"Open", U"Read TextGrid from ESPS label file...",
+		praat_addMenuCommand (U"Objects", U"Open", U"Read TextGrid from Xwaves... || Read TextGrid from ESPS label file...",
 				nullptr, 1, READ1_TextGrid_readFromEspsLabelFile);
-		praat_addMenuCommand (U"Objects", U"Open", U"Read TextTier from Xwaves...",
-				nullptr, 1, READ1_TextTier_readFromXwaves);
-		praat_addMenuCommand (U"Objects", U"Open", U"Read IntervalTier from Xwaves...",
-				nullptr, 1, READ1_IntervalTier_readFromXwaves);
+	praat_addMenuCommand (U"Objects", U"Open", U"Read Sound with adjacent annotation files...", nullptr, 0, nullptr);
+		praat_addMenuCommand (U"Objects", U"Open", U"Read Sound with adjacent annotation files (Buckeye)...",
+				nullptr, 1, NEW_Sound_readWithAdjacentAnnotationFiles_buckeye);
+		praat_addMenuCommand (U"Objects", U"Open", U"Read Sound with adjacent annotation files (TIMIT)...",
+				nullptr, 1, NEW_Sound_readWithAdjacentAnnotationFiles_timit);
 
 	praat_addMenuCommand (U"Objects", U"ApplicationHelp", U"Praat Intro", nullptr, '?', HELP_PraatIntro);
 	#ifndef macintosh

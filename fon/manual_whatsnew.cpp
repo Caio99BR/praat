@@ -29,6 +29,25 @@ R"~~~(
 
 Latest changes in Praat.
 
+##6.4.31# (2 May 2025)
+• Backslash trigraphs: s\vv (`s\vv`), m\LIb (`m\LIb`), \V^ (`\V^`), d\// (`d\//`), d\-/ (`d\-/`), \l.\~/ (`\l.\~/`).
+• Unicode 16.0.
+
+##6.4.30# (29 April 2025)
+• Made the whole of the Buckeye corpus readable.
+• Backslash trigraphs for tone symbols: a\-' (`a\-'`), a\'- (`a\'-`), a\`- (`a\``-`), a\-` (`a\-```), a\rf (`a\rf`), a\fr (`a\fr`).
+• Other backslash trigraphs: d\mv (`d\mv`), d\wv (`d\wv`).
+
+##6.4.29# (27 April 2025)
+• ##Read Sound and adjacent annotation files (TIMIT)...#: if you open any sound file from the TIMIT corpus,
+  the annotation files with the same name in the same folder are interpreted as a TextGrid and opened as well.
+• ##Read Sound and adjacent annotation files (Buckeye)...#: if you open any sound file from the Buckeye corpus,
+  the annotation files with the same name in the same folder are interpreted as a TextGrid and opened as well.
+• Backslash trigraphs for tone symbols: a\'' (`a\''`), a\`` (`a\`````),
+  \-5 (`\-5`), \-4 (`\-4`), \-3 (`\-3`), \-2 (`\-2`), \-1 (`\-1`), \|u (`\|u`), \|d (`\|d`).
+• Backslash trigraphs for diagonal arrows: \NE (`\NE`), \SE (`\SE`), \SW (`\SW`), \NW (`\NW`);
+  the first two of these double as tone symbols.
+
 ##6.4.28# (22 April 2025)
 • TextGrid window: removed a bug that caused slow scrolling (i.e. computation of whole-sound Pitch and Formant objects)
   if the TextGrid was much longer than the Sound and the Sound was scrolled out of sight.

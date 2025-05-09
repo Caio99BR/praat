@@ -6,7 +6,7 @@
  *
  * This code is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or (at
+ * the Free Software Foundation; either version 3 of the License, or (at
  * your option) any later version.
  *
  * This code is distributed in the hope that it will be useful, but
@@ -24,9 +24,6 @@
 #include "TableOfReal.h"
 #include "Table.h"
 
-Collection_define (FunctionList, OrderedOf, Function) {
-};
-
 #include "TextGrid_def.h"
 
 autoTextPoint TextPoint_create (double time, conststring32 mark);
@@ -40,7 +37,6 @@ void TextInterval_setText (TextInterval me, conststring32 text);
 autoTextTier TextTier_create (double tmin, double tmax);
 
 void TextTier_addPoint (TextTier me, double time, conststring32 mark);
-autoTextTier TextTier_readFromXwaves (MelderFile file);
 autoPointProcess TextTier_getPoints (TextTier me, conststring32 text);
 
 autoIntervalTier IntervalTier_create_raw (double tmin, double tmax);
@@ -108,7 +104,22 @@ TextTier TextGrid_checkSpecifiedTierIsPointTier (TextGrid me, integer tierNumber
 void AnyTextGridTier_identifyClass (Function anyTextGridTier, IntervalTier *intervalTier, TextTier *textTier);
 
 void TextGrid_addTier_copy (TextGrid me, Function tier);
-autoTextGrid TextGrids_merge (OrderedOf<structTextGrid>* textGrids);
+void TextGrid_addTier_move (TextGrid me, autoFunction tier);
+
+autoTextGrid TextGrids_merge (OrderedOf <structTextGrid>* textGrids, bool equalizeDomains);
+/*
+	Merge two or more textGrids.
+	The new domain will run from
+		min (textGrids[] -> xmin)
+	to
+		max (textGrids[] -> xmax)
+
+	If `equalizeDomains`:
+		- All tiers will have this same domain.
+		- All interval tiers will have intervals that border on the edges of this domain;
+		  this implies that a new empty interval can be added at the beginning and/or end of a tier.
+*/
+
 autoTextGrid TextGrid_extractPart (TextGrid me, double tmin, double tmax, bool preserveTimes);
 
 autoTextGrid Label_to_TextGrid (Label me, double duration);
@@ -157,15 +168,19 @@ autoTextGrid TextGrids_concatenate (OrderedOf<structTextGrid>* me);
 	Defined in TextGrid_files.cpp
 */
 
-autoTextGrid TextGrid_readFromEspsLabelFile (MelderFile file);
-autoIntervalTier IntervalTier_readFromXwaves (MelderFile file);
+autoTextGrid TextGrid_readFromEspsLabelFile (
+	MelderFile file,
+	bool tiersArePointTiers,
+	integer overrideNumberOfTiers   // 0 means don't override
+);
 void IntervalTier_writeToXwaves (IntervalTier me, MelderFile file);
 
 void TextGrid_writeToChronologicalTextFile (TextGrid me, MelderFile file);
 autoTextGrid TextGrid_readFromChronologicalTextFile (MelderFile file);
 autoTextGrid TextGrid_readFromCgnSyntaxFile (MelderFile file);
 
-autoTextGrid TextGrid_readFromTIMITLabelFile (MelderFile file, bool phnFile);
+autoIntervalTier IntervalTier_readFromTimitLabelFile (MelderFile file, bool hasPhones);
+autoTextGrid TextGrid_readFromTimitLabelFile (MelderFile file, bool hasPhones);
 /*
 	Read TIMIT label file with the following structure:
 		samplenumber1 samplenumber2 label1
@@ -200,6 +215,7 @@ autoDaata TextGrid_TIMITLabelFileRecognizer (integer nread, const char *header, 
 		A valid word is a string with contains the lowercase characters [a-z] and ['].
 */
 
+void TextGrid_checkInvariants_e (const constTextGrid me, const bool includeWeakInvariants);
 
 /* End of file TextGrid.h */
 #endif

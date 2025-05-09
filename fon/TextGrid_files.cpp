@@ -18,56 +18,6 @@
 
 #include "TextGrid.h"
 
-autoTextTier TextTier_readFromXwaves (MelderFile file) {
-	try {
-		conststring8 line;
-
-		autoTextTier me = TextTier_create (0, 100);
-		autoMelderFile mfile = MelderFile_open (file);
-
-		/*
-		 * Search for a line that starts with '#'.
-		 */
-		for (;;) {
-			line = MelderFile_readLine8 (file);
-			if (! line)
-				Melder_throw (U"Missing '#' line.");
-			if (line [0] == '#')
-				break;
-		}
-
-		/*
-		 * Read a mark from every line.
-		 */
-		for (;;) {
-			line = MelderFile_readLine8 (file);
-			if (! line)
-				break;   // normal end-of-file
-			double time;
-			integer colour;
-			char mark [300];
-			if (sscanf (line, "%lf%td%299s", & time, & colour, mark) < 3)   // BUG: semantic buffer overflow
-				Melder_throw (U"Line too short: \"", Melder_peek8to32 (line), U"\".");
-			TextTier_addPoint (me.get(), time, Melder_peek8to32 (mark));
-		}
-
-		/*
-		 * Fix domain.
-		 */
-		if (my points.size > 0) {
-			TextPoint point = my points.at [1];
-			if (point -> number < 0.0)
-				my xmin = point -> number - 1.0;
-			point = my points.at [my points.size];
-			my xmax = point -> number + 1.0;
-		}
-		mfile.close ();
-		return me;
-	} catch (MelderError) {
-		Melder_throw (U"TextTier not read from Xwaves file.");
-	}
-}
-
 static int64 Melder_readInteger (const char32 **p) {
 	char32 kar = * (*p) ++;
 	Melder_require (kar != U'\0',
@@ -138,14 +88,18 @@ static double Melder_readReal (const char32 **p) {
 	return Melder_a8tof (buffer);
 }
 
-autoTextGrid TextGrid_readFromEspsLabelFile (MelderFile file) {
+autoTextGrid TextGrid_readFromEspsLabelFile (
+	const MelderFile file,
+	const bool tiersArePointTiers,
+	const integer overrideNumberOfTiers
+) {
 	try {
 		autoMelderReadText text = MelderReadText_createFromFile (file);   // going to be UTF-8-compatible
 
 		/*
 			Cycle through all lines until encountering a line that starts with '#'.
 		*/
-		integer numberOfTiers = 1;
+		/* mutable count */ integer numberOfTiers = 1;
 		char32 separator = U';';
 		for (;;) {
 			const conststring32 line = MelderReadText_readLine (text.get());
@@ -153,38 +107,168 @@ autoTextGrid TextGrid_readFromEspsLabelFile (MelderFile file) {
 				Melder_throw (U"Missing '#' line.");
 			if (line [0] == '#')
 				break;
-			constexpr char32 tag_nfields [] = U"nfields ";
-			constexpr integer tag_nfields_length = Melder_length (tag_nfields);
-			if (Melder_startsWith (line, tag_nfields))
-				numberOfTiers = Melder_atoi (line + tag_nfields_length);
-			constexpr char32 tag_separator [] = U"separator ";
-			if (Melder_startsWith (line, tag_separator))
-				separator = line [Melder_length (tag_separator)];
+			if (Melder_startsWith (line, U"nfields "))
+				numberOfTiers = Melder_atoi (line + 8);
+			if (Melder_startsWith (line, U"separator "))
+				separator = line [10];
+			else if (Melder_startsWith (line, U"separator"))
+				separator = line [9];
 		}
 		Melder_require (numberOfTiers >= 1,
 			U"The number of tiers has to be at least 1, but the file states that it should be ", numberOfTiers, U".");
 		Melder_require (numberOfTiers <= 1'000'000'000,
 			U"The number of tiers has to be at most 1,000,000,000, but the file states that it should be ", numberOfTiers, U".");
+		if (overrideNumberOfTiers >= 1)
+			numberOfTiers = overrideNumberOfTiers;
 
-		/* mutable preliminary */ double tmin = 0.0, tmax = 100.0;
-		autoTextGrid me = TextGrid_createWithoutTiers (tmin, tmax);
+		/* mutable preliminary */ double globalTmin = 0.0, globalTmax = 1e-6;
+		autoTextGrid me = TextGrid_createWithoutTiers (globalTmin, globalTmax);
 		for (integer itier = 1; itier <= numberOfTiers; itier ++) {
-			/*
-				Dummy name.
-			*/
-			autoIntervalTier tier = IntervalTier_create_raw (tmin, tmax);
+			autoFunction tier = tiersArePointTiers ? static_cast <autoFunction> (TextTier_create (globalTmin, globalTmax)) :
+													 static_cast <autoFunction> (IntervalTier_create_raw (globalTmin, globalTmax));
 			Thing_setName (tier.get(), Melder_integer (itier));
 			my tiers -> addItem_move (tier.move());
 		}
+		Melder_assert (my tiers->size > 0);
 
 		autoMelderString label;
-		/* mutable step */ double startingTime = 0.0, endTime = undefined;
+		/* mutable step */ double startingTime = 0.0, endTime = 1e-6;
 		for (;;) {
 			/* mutable scan */ conststring32 line = MelderReadText_readLine (text.get());
 			if (! line)
 				break;
+			if (line [0] == U'\0')
+				continue;   // moderately normal stray empty line
+			if (line [0] == U';') {
+				/*
+					This is a continuation from the previous line; it occurs in Buckeye/s35/s3504a.words.
+					The interpretation is that this is the last tier.
+				*/
+				line ++;   // step over semicolon
+				Melder_skipHorizontalSpace (& line);
+				Function lastTier = my tiers->at [my tiers->size];
+				if (tiersArePointTiers) {
+					TextTier tier = static_cast <TextTier> (lastTier);
+					Melder_require (tier -> points.size > 0,
+						U"Stray semicolon in line ", MelderReadText_getLineNumber (text.get()), U".");
+					TextPoint point = tier -> points.at [tier -> points.size];
+					TextPoint_setText (point, line);
+				} else {
+					IntervalTier tier = static_cast <IntervalTier> (lastTier);
+					if (tier -> intervals.size > 0) {
+						TextInterval interval = tier -> intervals.at [tier -> intervals.size];
+						TextInterval_setText (interval, line);
+					}
+				}
+				/*
+					The quirk in Buckeye/s35/s3504a.words also means that the second and third tiers haven't been filled.
+					Repair this very specific situation, after checking that it indeed occurs.
+				*/
+				if (my tiers->size == 4) {
+					auto getAbbreviation = [] (conststring32 fullText) -> conststring32 {
+						if (Melder_equ (fullText, U"<VOCNOISE>"))
+							return U"U";
+						if (Melder_startsWith (fullText, U"<SIL"))
+							return U"S";
+						if (Melder_startsWith (fullText, U"<IVER"))
+							return U"S";
+						if (Melder_startsWith (fullText, U"<IVER"))
+							return U"S";
+						if (Melder_equ (fullText, U"{B_TRANS}"))
+							return U"B";
+						if (Melder_equ (fullText, U"{E_TRANS}"))
+							return U"E";
+						if (Melder_startsWith (fullText, U"<UNKNOWN"))
+							return U"U";
+						if (Melder_startsWith (fullText, U"<CUTOFF"))
+							return U"U";
+						if (Melder_startsWith (fullText, U"<LAUGH"))
+							return U"U";
+						if (Melder_startsWith (fullText, U"<EXT"))
+							return U"U";
+						if (Melder_startsWith (fullText, U"<NOISE"))
+							return U"U";
+						if (Melder_startsWith (fullText, U"<ERROR"))
+							return U"U";
+						if (Melder_startsWith (fullText, U"<HES"))
+							return U"U";
+						return U"";
+					};
+					/*
+						Get the texts from the first three tiers.
+					*/
+					Function firstAnyTier  = my tiers->at [1];
+					Function secondAnyTier = my tiers->at [2];
+					Function thirdAnyTier  = my tiers->at [3];
+					if (tiersArePointTiers) {
+						TextTier firstTier  = static_cast <TextTier> (firstAnyTier);
+						TextTier secondTier = static_cast <TextTier> (secondAnyTier);
+						TextTier thirdTier  = static_cast <TextTier> (thirdAnyTier);
+						if (firstTier->points.size > 0 && secondTier->points.size > 0 && thirdTier->points.size > 0) {
+							TextTier tier = static_cast <TextTier> (lastTier);
+							TextPoint point = tier -> points.at [tier -> points.size];
+							const double localTime = point -> number;
+							TextPoint firstPoint  = firstTier  -> points.at [firstTier->points.size];
+							TextPoint secondPoint = secondTier -> points.at [secondTier->points.size];
+							TextPoint thirdPoint  = thirdTier  -> points.at [thirdTier->points.size];
+							if (
+								firstPoint  -> number == localTime &&
+								secondPoint -> number == localTime &&
+								thirdPoint  -> number == localTime &&
+								! Melder_equ (firstPoint -> mark.get(), U"") &&   // The first tier should have a text,
+								Melder_equ (secondPoint -> mark.get(), U"") &&   // but the second tier should be empty
+								Melder_equ (thirdPoint  -> mark.get(), U"")   // and the third tier should also be empty.
+							) {
+								conststring32 abbreviation = getAbbreviation (firstPoint -> mark.get());
+								TextPoint_setText (secondPoint, abbreviation);
+								TextPoint_setText (thirdPoint,  abbreviation);
+							}
+						}
+					} else {
+						IntervalTier firstTier  = static_cast <IntervalTier> (firstAnyTier);
+						IntervalTier secondTier = static_cast <IntervalTier> (secondAnyTier);
+						IntervalTier thirdTier  = static_cast <IntervalTier> (thirdAnyTier);
+						if (firstTier->intervals.size > 0 && secondTier->intervals.size > 0 && thirdTier->intervals.size > 0) {
+							IntervalTier tier = static_cast <IntervalTier> (lastTier);
+							TextInterval interval = tier -> intervals.at [tier -> intervals.size];
+							const double localTmin = interval -> xmin;
+							const double localTmax = interval -> xmax;
+							TextInterval firstInterval  = firstTier  -> intervals.at [firstTier->intervals.size];
+							TextInterval secondInterval = secondTier -> intervals.at [secondTier->intervals.size];
+							TextInterval thirdInterval  = thirdTier  -> intervals.at [thirdTier->intervals.size];
+							if (
+								firstInterval  -> xmin == localTmin &&
+								secondInterval -> xmin == localTmin &&
+								thirdInterval  -> xmin == localTmin &&
+								firstInterval  -> xmax == localTmax &&
+								secondInterval -> xmax == localTmax &&
+								thirdInterval  -> xmax == localTmax &&
+								! Melder_equ (firstInterval -> text.get(), U"") &&   // The first tier should have a text,
+								Melder_equ (secondInterval -> text.get(), U"") &&   // but the second tier should be empty
+								Melder_equ (thirdInterval  -> text.get(), U"")   // and the third tier should also be empty.
+							) {
+								conststring32 abbreviation = getAbbreviation (firstInterval -> text.get());
+								TextInterval_setText (secondInterval, abbreviation);
+								TextInterval_setText (thirdInterval,  abbreviation);
+							}
+						}
+					}
+				}
+				continue;
+			}
 			Melder_skipHorizontalSpace (& line);
 			endTime = Melder_readReal (& line);
+			if (endTime < 0.0) {
+				Melder_casual (U"A negative time in file ", file, U" in line ", MelderReadText_getLineNumber (text.get()), U".");
+				continue;   // don't insert any interval
+			}
+			if (endTime < startingTime) {
+				/*
+					This could be the error in Buckeye/s28/s2801a/s2301a.words.
+				*/
+				if (my tiers->size == 4 && fabs (endTime - 421.986875) < 1e-9 && fabs (startingTime - 431.847408) < 1e-9)
+					endTime += 10.0;
+			}
 			{// scope
 				const char32 shouldBeHorizontalSpace = * line ++;
 				Melder_require (Melder_isHorizontalSpace (shouldBeHorizontalSpace),
@@ -199,90 +283,55 @@ autoTextGrid TextGrid_readFromEspsLabelFile (MelderFile file) {
 					U"There should be a space after the colour number in line ", MelderReadText_getLineNumber (text.get()), U".");
 			}
 			for (integer itier = 1; itier <= numberOfTiers; itier ++) {
+				Melder_skipHorizontalSpace (& line);
 				MelderString_empty (& label);
 				for (;;) {
-					char32 kar = * line ++;
-					if (kar == separator || kar == U'\0')
+					char32 kar = * line;
+					if (kar == U'\0')
 						break;
+					if (kar == separator) {
+						line ++;   // consume separator
+						break;
+					}
 					MelderString_appendCharacter (& label, kar);
+					line ++;   // consume kar
 				}
-				IntervalTier tier = static_cast <IntervalTier> (my tiers->at [itier]);
-				(void) IntervalTier_addInterval_raw (tier, startingTime, endTime, label.string);
+				while (label.length > 0 && Melder_isHorizontalSpace (label.string [label.length - 1]))   // FIXME should encapsulate
+					label.string [-- label.length] = U'\0';   // remove the space before ";" in e.g. "ih ; *"
+				if (tiersArePointTiers) {
+					TextTier tier = static_cast <TextTier> (my tiers->at [itier]);
+					TextTier_addPoint (tier, endTime, label.string);
+				} else {
+					IntervalTier tier = static_cast <IntervalTier> (my tiers->at [itier]);
+					if (startingTime == endTime) {
+						/*
+							A zero-duration interval: combine with the previous interval.
+						*/
+						if (tier -> intervals.size > 1) {
+							const TextInterval previousInterval = tier -> intervals.at [tier -> intervals.size];
+							TextInterval_setText (previousInterval, Melder_cat (previousInterval -> text.get(), U"//", label.string));
+						} else
+							Melder_casual (U"A zero-duration interval at the start of file ", file, U" in tier ", itier,
+									U", containing the text “", label.string, U"”.");
+					} else {
+						(void) IntervalTier_addInterval_raw (tier, startingTime, endTime, label.string);
+					}
+				}
 			}
 			startingTime = endTime;
 		}
 		for (integer itier = 1; itier <= numberOfTiers; itier ++) {
-			IntervalTier tier = static_cast <IntervalTier> (my tiers->at [itier]);
+			Function tier = my tiers->at [itier];
 			tier -> xmax = endTime;
-			IntervalTier_haveAtLeastOneInterval (tier);
+			if (! tiersArePointTiers)
+				IntervalTier_haveAtLeastOneInterval (static_cast <IntervalTier> (tier));
 		}
 		my xmax = endTime;
+
+		TextGrid_checkInvariants_e (me.get(), true);
 		return me;
 	} catch (MelderError) {
 		Melder_throw (U"TextGrid not read from file ", file, U".");
-	}
-}
-
-autoIntervalTier IntervalTier_readFromXwaves (MelderFile file) {
-	try {
-		char *line;
-		double lastTime = 0.0;
-
-		autoIntervalTier me = IntervalTier_create (0, 100);
-		autoMelderFile mfile = MelderFile_open (file);
-
-		/*
-			Search for a line that starts with '#'.
-		*/
-		for (;;) {
-			line = MelderFile_readLine8 (file);
-			if (! line)
-				Melder_throw (U"Missing '#' line.");
-			if (line [0] == '#')
-				break;
-		}
-
-		/*
-			Read a mark from every line.
-		*/
-		for (;;) {
-			double time;
-			integer colour;
-			integer numberOfElements;
-			char mark [300];
-
-			line = MelderFile_readLine8 (file);
-			if (! line)
-				break;   // normal end-of-file
-			numberOfElements = sscanf (line, "%lf%td%199s", & time, & colour, mark);
-			if (numberOfElements == 0)
-				break;   // an empty line, hopefully at the end
-			if (numberOfElements == 1)
-				Melder_throw (U"Line too short: \"", Melder_peek8to32 (line), U"\".");
-			if (numberOfElements == 2)
-				mark [0] = '\0';
-			if (lastTime == 0.0) {
-				TextInterval interval = my intervals.at [1];
-				interval -> xmax = time;
-				TextInterval_setText (interval, Melder_peek8to32 (mark));
-			} else {
-				IntervalTier_addInterval_raw (me.get(), lastTime, time, Melder_peek8to32 (mark));
-			}
-			lastTime = time;
-		}
-
-		/*
-			Fix domain.
-		*/
-		if (lastTime > 0.0) {
-			TextInterval lastInterval = my intervals.at [my intervals.size];
-			my xmax = lastInterval -> xmax = lastTime;
-		}
-
-		mfile.close ();
-		return me;
-	} catch (MelderError) {
-		Melder_throw (U"IntervalTier not read from file ", file, U".");
 	}
 }
 
@@ -724,8 +773,9 @@ const struct TIMIT_key {
 	{"uw", "u"},  			/* boot: bcl b UW tcl t */
 	/* fronted allophone of uw (alveolar contexts) */
 	/* 20190704 wgmichener "\\u\"" -> "\\u\\:^" */
-	/* 20250422 ppgb       "\\u\\:^" -> "u\\:^" */
-	{"ux", "u\\:^"}, 		/* toot: tcl t UX tcl t */
+	/* 20250422 ppgb       "\\u\\:^" -> "u\\:^"  (as in Zue & Seneff 1988: "Transcription and alignment of the Timit database") */
+	/* 20250426 ppgb       "u\\:^" -> "\\u-"     (turn Americanist into IPA (could also have been [y]) */
+	{"ux", "\\u-"}, 		/* toot: tcl t UX tcl t */
 	{"er", "\\er\\hr"},		/* bird: bcl b ER dcl d */
 	{"ax", "\\sw"}, 		/* about: AX bcl b aw tcl t */
 	{"ix", "\\i-"}, 		/* debit: dcl d eh bcl b IX tcl t */
@@ -788,10 +838,10 @@ const struct TIMIT_key {
 	/* 20190704 wgmichener "?" -> "\\?g" */
 	{"q", "\\?g"},
 	/* Others */
-	{"pau", ""},	/* pause */
-	{"epi", ""},	/* epenthetic silence */
-	{"h#", ""}, 	/* marks start and end piece of sentence */
-	/* the following markers only occur in the dictionary */
+	{"pau", "(pau)"},	/* pause */
+	{"epi", "(epi)"},	/* epenthetic silence */
+	{"h#", "(h#)"}, 	/* marks start and end piece of sentence */
+	/* the following markers occur only in the dictionary */
 	/* 20190704 wgmichener "1" -> "\\'1" */
 	{"1", "\\'1"},		/* primary stress marker */
 	/* 20190704 wgmichener "2" -> "\\'2" */
@@ -844,133 +894,157 @@ autoDaata TextGrid_TIMITLabelFileRecognizer (integer nread, const char *header, 
 	} else if (! isTimitWord (label1) || ! isTimitWord (label2)) {
 		return autoDaata ();
 	}
-	autoTextGrid thee = TextGrid_readFromTIMITLabelFile (file, phnFile);
+	autoTextGrid thee = TextGrid_readFromTimitLabelFile (file, phnFile);
 	return thee.move();
 }
 
-static void IntervalTier_add (IntervalTier me, double xmin, double xmax, conststring32 label) {
-	const integer i = IntervalTier_timeToIndex (me, xmin); // xmin is in interval i
-	Melder_require (i > 0,
-		U"Index too low.");
-	autoTextInterval newti = TextInterval_create (xmin, xmax, label);
-	const TextInterval interval = my intervals.at [i];
-	const double xmaxi = interval -> xmax;
-	Melder_require (xmax <= xmaxi,
-		U"Don't know what to do");
-	if (xmin == interval -> xmin) {
-		if (xmax == interval -> xmax) { // interval already present
-			TextInterval_setText (interval, label);
-			return;
+autoIntervalTier IntervalTier_readFromTimitLabelFile (
+	const MelderFile file,
+	const bool hasPhones
+) {
+	try {
+		autoMelderReadText text = MelderReadText_createFromFile (file);   // going to be UTF-8-compatible
+		constexpr double fixedTimitSamplingFrequency = 16000.0;   // Hz
+		constexpr double fixedSamplingPeriod = 1.0 / fixedTimitSamplingFrequency;
+		autoMelderString label, swallowedWord;
+		autoIntervalTier me = IntervalTier_create_raw (+1e308, -1e308);
+		Melder_assert (my intervals.size == 0);
+
+		/* mutable step */ integer previousStartingSample = -2, previousEndSample = -1;
+		for (;;) {
+			/* mutable scan */ conststring32 line = MelderReadText_readLine (text.get());
+			if (! line)
+				break;
+
+			/*
+				Read and check starting sample.
+			*/
+			const integer startingSample = Melder_readInteger (& line);
+			if (my intervals.size == 0 && startingSample != 0) {
+				Melder_require (startingSample > 0,
+					U"The annotation should not start at a negative sample number.");
+				Melder_assert (startingSample > 0);
+				(void) IntervalTier_addInterval_raw (me.get(), 0.0, startingSample * fixedSamplingPeriod, U"");
+				previousStartingSample = 0;
+				previousEndSample = startingSample;
+			}
+			Melder_require (startingSample >= previousStartingSample,
+				U"The starting sample in line ", MelderReadText_getLineNumber (text.get()),
+				U" should be at least the starting sample of the previous line, but ",
+				startingSample, U" is less than ", previousStartingSample, U"."
+			);
+			{// scope
+				const char32 shouldBeHorizontalSpace = * line ++;
+				Melder_require (Melder_isHorizontalSpace (shouldBeHorizontalSpace),
+					U"There should be a space after the starting sample in line ", MelderReadText_getLineNumber (text.get()), U".");
+			}
+
+			/*
+				Read and check end sample.
+			*/
+			Melder_skipHorizontalSpace (& line);
+			const integer endSample = Melder_readInteger (& line);
+			Melder_require (endSample >= startingSample,
+				U"End sample should be at least starting sample in line ", MelderReadText_getLineNumber (text.get()),
+				U" but ", endSample, U" is less than ", startingSample, U"."
+			);
+			Melder_require (endSample >= previousEndSample,
+				U"The end sample in line ", MelderReadText_getLineNumber (text.get()),
+				U" should be at least the end sample of the previous line, but ",
+				endSample, U" is less than ", previousEndSample, U"."
+			);
+			{// scope
+				const char32 shouldBeHorizontalSpace = * line ++;
+				Melder_require (Melder_isHorizontalSpace (shouldBeHorizontalSpace),
+					U"There should be a space after the end sample in line ", MelderReadText_getLineNumber (text.get()), U".");
+			}
+
+			/*
+				Read and check label text.
+			*/
+			Melder_skipHorizontalSpace (& line);
+			MelderString_copy (& label, line);
+			if (endSample == startingSample) {
+				if (hasPhones) {
+					Melder_throw (U"Zero-duration phone found at line ", MelderReadText_getLineNumber (text.get()), U".");
+				} else {
+					/*
+						For the following .wrd files this occurs once per file:
+						train/dr3/makr0/si1982
+						train/dr3/mhjb0/sa2
+						train/dr5/mmcc0/sx348
+						train/dr6/meal0/sa2
+						train/dr6/mesj0/si2039
+						train/dr7/fmkc0/sx352
+						train/dr7/mrem0/sx61
+						train/dr7/mvrw0/sx315
+						test/dr6/mjfc0/sx138
+					*/
+					MelderString_copy (& swallowedWord, line);
+					continue;
+				}
+			} else {
+				/* mutable fix */ double startingTime = startingSample * fixedSamplingPeriod;
+				const double endTime = endSample * fixedSamplingPeriod;
+				if (my intervals.size > 0 && startingSample != previousEndSample) {
+					/*
+						Overlapping intervals.
+					*/
+					if (hasPhones) {
+						/*
+							Overlapping phones. Should not occur.
+						*/
+						Melder_throw (U"Overlapping phones around line ", MelderReadText_getLineNumber (text.get()),
+								U": previous end sample ", previousEndSample, U", current starting sample ", startingSample, U".");
+					} else if (startingSample < previousEndSample){
+						/*
+							Overlapping words. Put the boundary in the middle (the boundary will fall within a phone).
+						*/
+						const double previousEndTime = previousEndSample * fixedSamplingPeriod;
+						startingTime = 0.5 * (startingTime + previousEndTime);
+						TextInterval previousInterval = my intervals.at [my intervals.size];
+						previousInterval -> xmax = startingTime;
+						Melder_assert (previousInterval -> xmin < previousInterval -> xmax);
+					} else {
+						/*
+							A gap between words. Fill with an empty interval.
+						*/
+						(void) IntervalTier_addInterval_raw (me.get(), previousEndSample * fixedSamplingPeriod, startingTime, U"");
+					}
+				}
+				(void) IntervalTier_addInterval_raw (me.get(), startingTime, endTime,
+						swallowedWord.length > 0 ? Melder_cat (swallowedWord.string, U"+", line) : line);
+				MelderString_empty (& swallowedWord);
+			}
+			previousStartingSample = startingSample;
+			previousEndSample = endSample;
 		}
-		/*
-			Split interval
-		*/
-		interval -> xmin = xmax;
-		my intervals. addItem_move (newti.move());
-		return;
-	}
-	interval -> xmax = xmin;
-	my intervals. addItem_move (newti.move());
-	/*
-		Extra interval when xmax's are not the same
-	*/
-	if (xmax < xmaxi) {
-		autoTextInterval newti2 = TextInterval_create (xmax, xmaxi, interval -> text.get());
-		my intervals. addItem_move (newti2.move());
+		Melder_require (my intervals.size >= 1,
+			U"The file should contain at least one interval, but none were found.");
+		return me;
+	} catch (MelderError) {
+		Melder_throw (U"Interval tier not read from file ", file, U".");
 	}
 }
 
-autoTextGrid TextGrid_readFromTIMITLabelFile (MelderFile file, bool phnFile) {
+autoTextGrid TextGrid_readFromTimitLabelFile (
+	const MelderFile file,
+	const bool hasPhones
+) {
 	try {
-		const double dt = 1.0 / 16000.0; // TIMIT samplingFrequency)
-		double xmax = dt;
-		autofile f = Melder_fopen (file, "r");
-		/*
-			Ending time will only be known after all labels have been read.
-			We start with a sufficiently long duration (one hour) and correct this later.
-		*/
-		autoTextGrid me = TextGrid_create (0.0, 3600.0, U"wrd", 0);
-		const IntervalTier timit = (IntervalTier) my tiers->at [1];
-		integer linesRead = 0;
-		char line [200], label [200];
-		while (fgets (line, 199, f)) {
-			integer it1, it2;
-			linesRead ++;
-			Melder_require (sscanf (line, "%td%td%199s", & it1, & it2, label) == 3,
-				U"Incorrect number of items.");
-			if (it1 == it2) {
-				Melder_warning (U"File \"", MelderFile_messageName (file), U"\": Label \"", Melder_peek8to32 (label),
-					U"\" on line ", linesRead, U" was skipped because the start time and the end time were equal.");
-				/*
-					For the following .wrd files this occurs once per file:
-					train/dr3/makr0/si1982
-					train/dr3/mhjb0/sa2
-					train/dr5/mmcc0/sx348
-					train/dr6/meal0/sa2
-					train/dr6/mesj0/si2039
-					train/dr7/fmkc0/sx352
-					train/dr7/mrem0/sx61
-					train/dr7/mvrw0/sx315
-					test/dr6/mjfc0/sx138
-				*/
-			} else {
-				Melder_require (it1 >= 0 && it1 < it2,
-					U"Incorrect time at line ", linesRead);
+		autoTextGrid result = TextGrid_createWithoutTiers (+1e308, -1e308);
+		autoIntervalTier tier = IntervalTier_readFromTimitLabelFile (file, hasPhones);
+		if (hasPhones) {
+			autoIntervalTier ipa = Data_copy (tier.get());
+			for (integer iinterval = 1; iinterval <= ipa -> intervals.size; iinterval ++) {
+				const mutableTextInterval interval = ipa -> intervals.at [iinterval];
+				TextInterval_setText (ipa -> intervals.at [iinterval],
+						Melder_peek8to32 (timitLabelToIpaLabel (Melder_peek32to8 (interval -> text.get()))));
 			}
-			xmax = it2 * dt;
-			double xmin = it1 * dt;
-			integer ni = timit -> intervals.size - 1;
-			if (ni < 1) {
-				ni = 1;
-				/*
-					Some files do not start with a first line "0 <number2> h#".
-					Instead they start with "<number1> <number2> h#", where number1 > 0.
-					We override number1 with 0.
-				*/
-				if (xmin > 0.0 && phnFile)
-					xmin = 0.0;
-			}
-			const TextInterval interval = timit -> intervals.at [ni];
-			if (xmin < interval -> xmax && linesRead > 1) {
-				xmin = interval -> xmax;
-				Melder_warning (U"File \"", MelderFile_messageName (file),
-					U"\": Start time set to previous end time for label at line ", linesRead, U".");
-				/*
-					This warning occurs hundreds of time for the .wrd files
-				*/
-			}
-			/*
-				Standard: new TextInterval
-			*/
-			const char *labelstring = (strncmp (label, "h#", 2) ? label : TIMIT_DELIMITER);
-			IntervalTier_add (timit, xmin, xmax, Melder_peek8to32 (labelstring));
+			TextGrid_addTier_move (result.get(), ipa.move());
 		}
-		/*
-			Now correct the end times, based on last read interval.
-			(end time was set to large value!)
-		*/
-		Melder_require (timit -> intervals.size > 1,
-			U"Empty TextGrid.");
-		timit -> intervals. removeItem (timit -> intervals.size);
-		TextInterval interval = timit -> intervals.at [timit -> intervals.size];
-		timit -> xmax = interval -> xmax;
-		my xmax = xmax;
-		if (phnFile) { // Create tier 2 with IPA symbols
-			autoIntervalTier ipa = Data_copy (timit);
-			Thing_setName (ipa.get(), U"ipa");
-			/*
-				First change the data in ipa
-			*/
-			for (integer i = 1; i <= ipa -> intervals.size; i ++) {
-				interval = timit -> intervals.at [i];
-				TextInterval_setText (ipa -> intervals.at [i],
-					Melder_peek8to32 (timitLabelToIpaLabel (Melder_peek32to8 (interval -> text.get()))));
-			}
-			my tiers -> addItem_move (ipa.move());
-			Thing_setName (timit, U"phn");
-		}
-		f.close (file);
-		return me;
+		TextGrid_addTier_move (result.get(), tier.move());
+		return result;
 	} catch (MelderError) {
 		Melder_throw (U"TextGrid not read from file ", file, U".");
 	}
