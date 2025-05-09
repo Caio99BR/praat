@@ -54,7 +54,7 @@ jobs:
           variant: sccache
 
       - name: Install dependencies
-        run: sudo apt install -y make rsync pkg-config libgtk-3-dev libasound2-dev libpulse-dev libjack-dev clang gcc g++ binutils binutils-mingw-w64 xvfb wget
+        run: sudo apt install -y make rsync pkg-config libgtk-3-dev libasound2-dev libpulse-dev libjack-dev clang gcc g++ libc++-dev libc++abi-dev binutils binutils-mingw-w64 xvfb wget
 
       - name: Download and Install LLVM-Mingw toolchain
         run: |
