@@ -67,7 +67,11 @@ jobs:
           cp makefiles/${{ matrix.makefile }} makefile.defs
 
           # Define PREFIX with PWD and toolchain path for Windows
-          PREFIX="${{ matrix.toolchain != '' && '$(pwd)/'${{ matrix.toolchain }}/bin/${{ matrix.prefix }} || '' }}"
+          if [ "${{ matrix.toolchain }}" != "" ]; then
+            PREFIX="$(pwd)/${{ matrix.toolchain }}/bin/${{ matrix.prefix }}"
+          else
+            PREFIX=""
+          fi
 
           # Unify the make command, only CC and CXX change
           make -j$(nproc) \
