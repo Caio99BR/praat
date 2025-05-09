@@ -37,7 +37,7 @@ jobs:
           - version: clang
             targetos: linux
             ccache_path: sccache
-            toolchain: llvm-mingw-nightly-ucrt-ubuntu-22.04-x86_64
+            toolchain: ""
             prefix: ""
             makefile: makefile.defs.linux.pulse-clang
             binary: praat
@@ -54,9 +54,10 @@ jobs:
           variant: sccache
 
       - name: Install dependencies
-        run: sudo apt install -y make rsync pkg-config libgtk-3-dev libasound2-dev libpulse-dev libjack-dev clang gcc g++ binutils binutils-mingw-w64 xvfb wget
+        run: sudo apt install -y libgtk-3-dev libasound2-dev libpulse-dev libjack-dev clang binutils-mingw-w64 xvfb
 
-      - name: Download and Install LLVM-Mingw toolchain
+      - name: Download and Install LLVM-Mingw toolchain (only for Windows)
+        if: matrix.targetos == 'windows'  # Only download the mingw toolchain for Windows
         run: |
           wget https://github.com/mstorsjo/llvm-mingw/releases/download/nightly/${{ matrix.toolchain }}.tar.xz
           tar -xvf ${{ matrix.toolchain }}.tar.xz
@@ -64,10 +65,21 @@ jobs:
       - name: Build Praat
         run: |
           cp makefiles/${{ matrix.makefile }} makefile.defs
+
+          # Define PREFIX with PWD and toolchain path for Windows
+          if [ "${{ matrix.toolchain }}" != "" ]; then
+            PREFIX="$(pwd)/${{ matrix.toolchain }}/bin/${{ matrix.prefix }}"
+          else
+            PREFIX=""
+          fi
+
+          # Unify the make command, only CC and CXX change
           make -j$(nproc) \
-            PREFIX="$(pwd)/${{ matrix.toolchain }}/bin/${{ matrix.prefix }}" \
-            CC="${{ matrix.ccache_path }} $(pwd)/${{ matrix.toolchain }}/bin/${{ matrix.prefix }}clang" \
-            CXX="${{ matrix.ccache_path }} $(pwd)/${{ matrix.toolchain }}/bin/${{ matrix.prefix }}clang++"
+            PREFIX="${PREFIX}" \
+            CC="${{ matrix.ccache_path }} ${PREFIX}clang" \
+            CXX="${{ matrix.ccache_path }} ${PREFIX}clang++"
+
+          # Copy binary output with platform and version specific naming
           cp ${{ matrix.binary }} Praat-${{ matrix.targetos }}_${{ matrix.version }}${{ matrix.extension }}
 
       - name: Upload binary
