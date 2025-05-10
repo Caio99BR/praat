@@ -163,9 +163,8 @@ jobs:
 
       - name: Run Praat tests with xvfb
         run: |
-          export NO_AT_BRIDGE=1
-          ./Praat-${{ matrix.targetos }}_${{ matrix.version }}${{ matrix.extension }} --run test/runAllTests.praat -a
-          ./Praat-${{ matrix.targetos }}_${{ matrix.version }}${{ matrix.extension }} --run dwtest/runAllTests.praat -a
+          ./Praat-${{ matrix.targetos }}_${{ matrix.version }}${{ matrix.extension }} --run test/runAllTests.praat
+          ./Praat-${{ matrix.targetos }}_${{ matrix.version }}${{ matrix.extension }} --run dwtest/runAllTests.praat
 
   TestWindows:
     name: Run Windows tests
