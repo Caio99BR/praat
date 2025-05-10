@@ -23,7 +23,7 @@ jobs:
           - version: arm32
             targetos: linux
             ccache_path: sccache
-            toolchain: ""
+            toolchain: "gcc"
             prefix: arm-linux-gnueabihf-
             makefile: makefile.defs.linux.rpi
             binary: praat
@@ -32,7 +32,7 @@ jobs:
           - version: arm64
             targetos: linux
             ccache_path: sccache
-            toolchain: ""
+            toolchain: "gcc"
             prefix: aarch64-linux-gnu-
             makefile: makefile.defs.linux.rpi
             binary: praat
@@ -59,7 +59,7 @@ jobs:
           variant: sccache
 
       - name: Install dependencies
-        run: sudo apt install -y libgtk-3-dev libasound2-dev libpulse-dev libjack-dev binutils-mingw-w64 clang-12 aarch64-linux-gnu-clang arm-linux-gnueabihf-clang
+        run: sudo apt install -y libgtk-3-dev libasound2-dev libpulse-dev libjack-dev binutils-mingw-w64 clang-12 gcc-aarch64-linux-gnu gcc-arm-linux-gnueabihf
 
       - name: Download and Install LLVM-Mingw toolchain (only for Windows)
         if: matrix.targetos == 'windows'
@@ -74,16 +74,27 @@ jobs:
 
           # Define PREFIX with PWD and toolchain path for Windows
           if [ "${{ matrix.toolchain }}" != "" ]; then
-            PREFIX="$(pwd)/${{ matrix.toolchain }}/bin/${{ matrix.prefix }}"
+            if [ "${{ matrix.targetos }}" == "windows" ]; then
+              PREFIX="$(pwd)/${{ matrix.toolchain }}/bin/${{ matrix.prefix }}"
+            else
+              PREFIX="${{ matrix.prefix }}"
+            fi
           else
             PREFIX="${{ matrix.prefix }}"
           fi
 
           # Unify the make command, only CC and CXX change
-          make -j$(nproc) \
-            PREFIX="${PREFIX}" \
-            CC="${{ matrix.ccache_path }} ${PREFIX}clang" \
-            CXX="${{ matrix.ccache_path }} ${PREFIX}clang++"
+          if [ "${{ matrix.toolchain }}" == "gcc" ]; then
+            make -j$(nproc) \
+              PREFIX="${PREFIX}" \
+              CC="${{ matrix.ccache_path }} ${PREFIX}gcc" \
+              CXX="${{ matrix.ccache_path }} ${PREFIX}g++"
+          else
+            make -j$(nproc) \
+              PREFIX="${PREFIX}" \
+              CC="${{ matrix.ccache_path }} ${PREFIX}clang" \
+              CXX="${{ matrix.ccache_path }} ${PREFIX}clang++"
+          fi
 
           # Copy binary output with platform and version specific naming
           cp ${{ matrix.binary }} Praat-${{ matrix.targetos }}_${{ matrix.version }}${{ matrix.extension }}
