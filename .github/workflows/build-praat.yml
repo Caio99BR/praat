@@ -6,7 +6,65 @@ on:
   workflow_call:
 
 jobs:
-  Build:
+  BuildLinux:
+    strategy:
+      matrix:
+        include:
+          - version: clang
+            targetos: linux
+            ccache_path: sccache
+            toolchain: ""
+            prefix: ""
+            makefile: makefile.defs.linux.pulse-clang
+            binary: praat
+            extension: ""
+
+    name: Praat (${{ matrix.targetos }}) (${{ matrix.version }})
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hendrikmuhs/ccache-action@main
+        with:
+          key: ${{ runner.os }}-${{ matrix.version }}-ccache
+          variant: sccache
+
+      - name: Install dependencies
+        run: sudo apt install -y libgtk-3-dev libasound2-dev libpulse-dev libjack-dev binutils-mingw-w64
+
+      - name: Download and Install LLVM-Mingw toolchain (only for Windows)
+        if: matrix.targetos == 'windows'
+        run: |
+          wget https://github.com/mstorsjo/llvm-mingw/releases/download/nightly/${{ matrix.toolchain }}.tar.xz
+          tar -xvf ${{ matrix.toolchain }}.tar.xz
+
+      - name: Build Praat (${{ matrix.targetos }})
+        run: |
+          cp makefiles/${{ matrix.makefile }} makefile.defs
+
+          # Define PREFIX with PWD and toolchain path for Windows
+          if [ "${{ matrix.toolchain }}" != "" ]; then
+            PREFIX="$(pwd)/${{ matrix.toolchain }}/bin/${{ matrix.prefix }}"
+          else
+            PREFIX=""
+          fi
+
+          # Unify the make command, only CC and CXX change
+          make -j$(nproc) \
+            PREFIX="${PREFIX}" \
+            CC="${{ matrix.ccache_path }} ${PREFIX}clang" \
+            CXX="${{ matrix.ccache_path }} ${PREFIX}clang++"
+
+          # Copy binary output with platform and version specific naming
+          cp ${{ matrix.binary }} Praat-${{ matrix.targetos }}_${{ matrix.version }}${{ matrix.extension }}
+
+      - name: Upload binary (Praat-${{ matrix.targetos }}_${{ matrix.version }}${{ matrix.extension }})
+        uses: actions/upload-artifact@v4
+        with:
+          name: Praat-${{ matrix.targetos }}_${{ matrix.version }}
+          path: Praat-${{ matrix.targetos }}_${{ matrix.version }}${{ matrix.extension }}
+
+  BuildWindows:
     strategy:
       matrix:
         include:
@@ -34,16 +92,8 @@ jobs:
             makefile: makefile.defs.msys-clang
             binary: Praat.exe
             extension: .exe
-          - version: clang
-            targetos: linux
-            ccache_path: sccache
-            toolchain: ""
-            prefix: ""
-            makefile: makefile.defs.linux.pulse-clang
-            binary: praat
-            extension: ""
 
-    name: Praat (${{ matrix.version }}) (${{ matrix.binary }})
+    name: Praat (${{ matrix.targetos }}) (${{ matrix.version }})
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
@@ -54,15 +104,15 @@ jobs:
           variant: sccache
 
       - name: Install dependencies
-        run: sudo apt install -y libgtk-3-dev libasound2-dev libpulse-dev libjack-dev clang binutils-mingw-w64 xvfb
+        run: sudo apt install -y libgtk-3-dev libasound2-dev libpulse-dev libjack-dev binutils-mingw-w64
 
       - name: Download and Install LLVM-Mingw toolchain (only for Windows)
-        if: matrix.targetos == 'windows'  # Only download the mingw toolchain for Windows
+        if: matrix.targetos == 'windows'
         run: |
           wget https://github.com/mstorsjo/llvm-mingw/releases/download/nightly/${{ matrix.toolchain }}.tar.xz
           tar -xvf ${{ matrix.toolchain }}.tar.xz
 
-      - name: Build Praat
+      - name: Build Praat (${{ matrix.targetos }})
         run: |
           cp makefiles/${{ matrix.makefile }} makefile.defs
 
@@ -82,8 +132,62 @@ jobs:
           # Copy binary output with platform and version specific naming
           cp ${{ matrix.binary }} Praat-${{ matrix.targetos }}_${{ matrix.version }}${{ matrix.extension }}
 
-      - name: Upload binary
+      - name: Upload binary (Praat-${{ matrix.targetos }}_${{ matrix.version }}${{ matrix.extension }})
         uses: actions/upload-artifact@v4
         with:
-          name: Praat for ${{ matrix.targetos }} ${{ matrix.version }}
+          name: Praat-${{ matrix.targetos }}_${{ matrix.version }}
           path: Praat-${{ matrix.targetos }}_${{ matrix.version }}${{ matrix.extension }}
+
+  TestLinux:
+    name: Run Linux tests
+    runs-on: ubuntu-22.04
+    needs: BuildLinux
+    strategy:
+      matrix:
+        version: [clang]  # Specify versions for Linux
+        targetos: [linux]  # Target only Linux
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: Praat-${{ matrix.targetos }}_${{ matrix.version }}  # Download artifact for the correct version
+
+      - name: Install xvfb and dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y xvfb libgtk-3-0 libasound2 libpulse0 libjack0
+
+      - name: Make Praat executable
+        run: |
+          chmod +x ./Praat-${{ matrix.targetos }}_${{ matrix.version }}  # Add execute permission
+
+      - name: Run Praat tests with xvfb
+        run: |
+          xvfb-run --auto-servernum ./Praat-${{ matrix.targetos }}_${{ matrix.version }}${{ matrix.extension }} test/runAllTests.praat
+          xvfb-run --auto-servernum ./Praat-${{ matrix.targetos }}_${{ matrix.version }}${{ matrix.extension }} dwtest/runAllTests.praat
+
+  TestWindows:
+    name: Run Windows tests
+    runs-on: windows-latest
+    needs: BuildWindows
+    strategy:
+      matrix:
+        version: [aarch64, x86_64, intel32]  # Specify versions for windows
+        targetos: [windows]  # Target only Windows
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: Praat-${{ matrix.targetos }}_${{ matrix.version }}  # Download artifact for the correct version
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          update: true
+          install: base-devel
+
+      - name: Run Praat tests in MSYS2 shell
+        shell: msys2 {0}
+        run: |
+          # Run tests for the specific version dynamically
+          ./Praat-${{ matrix.targetos }}_${{ matrix.version }}${{ matrix.extension }} --run test/runAllTests.praat
+          ./Praat-${{ matrix.targetos }}_${{ matrix.version }}${{ matrix.extension }} --run dwtest/runAllTests.praat
