@@ -155,7 +155,7 @@ jobs:
       - name: Install xvfb and dependencies
         run: |
           sudo apt update
-          sudo apt install -y xvfb libgtk-3-0
+          sudo apt install -y xvfb libgtk-3-0 libasound2 libpulse0 libjack0
 
       - name: Make Praat executable
         run: |
