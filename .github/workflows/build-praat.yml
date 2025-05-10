@@ -26,7 +26,7 @@ jobs:
 
       - uses: hendrikmuhs/ccache-action@main
         with:
-          key: ${{ runner.os }}-${{ matrix.version }}-ccache
+          key: ${{ matrix.targetos }}-${{ matrix.version }}-ccache
           variant: sccache
 
       - name: Install dependencies
@@ -100,7 +100,7 @@ jobs:
 
       - uses: hendrikmuhs/ccache-action@main
         with:
-          key: ${{ runner.os }}-${{ matrix.version }}-ccache
+          key: ${{ matrix.targetos }}-${{ matrix.version }}-ccache
           variant: sccache
 
       - name: Install dependencies
@@ -144,50 +144,59 @@ jobs:
     needs: BuildLinux
     strategy:
       matrix:
-        version: [clang]  # Specify versions for Linux
-        targetos: [linux]  # Target only Linux
+        version: [clang]
+        targetos: [linux]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          name: Praat-${{ matrix.targetos }}_${{ matrix.version }}  # Download artifact for the correct version
+          name: Praat-${{ matrix.targetos }}_${{ matrix.version }}
 
       - name: Install xvfb and dependencies
         run: |
           sudo apt update
-          sudo apt install -y xvfb libgtk-3-0 libasound2 libpulse0 libjack0
+          sudo apt install -y libgtk-3-0 libasound2 libpulse0 libjack0
 
-      - name: Make Praat executable
+      - name: Run Praat tests
         run: |
-          chmod +x ./Praat-${{ matrix.targetos }}_${{ matrix.version }}  # Add execute permission
-
-      - name: Run Praat tests with xvfb
-        run: |
-          xvfb-run --auto-servernum ./Praat-${{ matrix.targetos }}_${{ matrix.version }}${{ matrix.extension }} test/runAllTests.praat
-          xvfb-run --auto-servernum ./Praat-${{ matrix.targetos }}_${{ matrix.version }}${{ matrix.extension }} dwtest/runAllTests.praat
+          chmod +x ./Praat-${{ matrix.targetos }}_${{ matrix.version }}
+          ./Praat-${{ matrix.targetos }}_${{ matrix.version }}${{ matrix.extension }} --run test/runAllTests.praat
+          ./Praat-${{ matrix.targetos }}_${{ matrix.version }}${{ matrix.extension }} --run dwtest/runAllTests.praat
 
   TestWindows:
     name: Run Windows tests
-    runs-on: windows-latest
     needs: BuildWindows
     strategy:
       matrix:
-        version: [aarch64, x86_64, intel32]  # Specify versions for windows
-        targetos: [windows]  # Target only Windows
+        include:
+          - version: aarch64
+            targetos: windows
+            runner: windows-11-arm
+            extension: .exe
+          - version: x86_64
+            targetos: windows
+            runner: windows-latest
+            extension: .exe
+          - version: intel32
+            targetos: windows
+            runner: windows-latest
+            extension: .exe
+
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          name: Praat-${{ matrix.targetos }}_${{ matrix.version }}  # Download artifact for the correct version
+          name: Praat-${{ matrix.targetos }}_${{ matrix.version }}
 
-      - uses: msys2/setup-msys2@v2
-        with:
-          update: true
-          install: base-devel
-
-      - name: Run Praat tests in MSYS2 shell
-        shell: msys2 {0}
+      - name: Check files before run
+        shell: pwsh
         run: |
-          # Run tests for the specific version dynamically
-          ./Praat-${{ matrix.targetos }}_${{ matrix.version }}${{ matrix.extension }} --run test/runAllTests.praat
-          ./Praat-${{ matrix.targetos }}_${{ matrix.version }}${{ matrix.extension }} --run dwtest/runAllTests.praat
+          Get-ChildItem
+          Get-ChildItem test
+
+      - name: Run Praat tests
+        shell: pwsh
+        run: |
+          .\Praat-${{ matrix.targetos }}_${{ matrix.version }}${{ matrix.extension }} --run test/runAllTests.praat
+          .\Praat-${{ matrix.targetos }}_${{ matrix.version }}${{ matrix.extension }} --run dwtest/runAllTests.praat
