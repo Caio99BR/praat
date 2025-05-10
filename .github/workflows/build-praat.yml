@@ -155,7 +155,7 @@ jobs:
       - name: Install xvfb and dependencies
         run: |
           sudo apt update
-          sudo apt install -y libgtk-3-0 libasound2 libpulse0 libjack0
+          sudo apt install -y libgtk-3-0 libasound2 libpulse0 libjack0 xvfb
 
       - name: Make Praat executable
         run: |
@@ -164,19 +164,29 @@ jobs:
       - name: Run Praat tests with xvfb
         run: |
           export NO_AT_BRIDGE=1
-          ldd ././Praat-${{ matrix.targetos }}_${{ matrix.version }}${{ matrix.extension }}
-          ././Praat-${{ matrix.targetos }}_${{ matrix.version }}${{ matrix.extension }} --version
-          ./Praat-${{ matrix.targetos }}_${{ matrix.version }}${{ matrix.extension }} test/runAllTests.praat
-          ./Praat-${{ matrix.targetos }}_${{ matrix.version }}${{ matrix.extension }} dwtest/runAllTests.praat
+          xvfb-run ./Praat-${{ matrix.targetos }}_${{ matrix.version }}${{ matrix.extension }} test/runAllTests.praat
+          xvfb-run ./Praat-${{ matrix.targetos }}_${{ matrix.version }}${{ matrix.extension }} dwtest/runAllTests.praat
 
   TestWindows:
     name: Run Windows tests
-    runs-on: windows-latest
     needs: BuildWindows
     strategy:
       matrix:
-        version: [aarch64, x86_64, intel32]  # Specify versions for windows
-        targetos: [windows]  # Target only Windows
+        include:
+          - version: aarch64
+            targetos: windows
+            runner: windows-11-arm
+            extension: .exe
+          - version: x86_64
+            targetos: windows
+            runner: windows-latest
+            extension: .exe
+          - version: intel32
+            targetos: windows
+            runner: windows-latest
+            extension: .exe
+
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
