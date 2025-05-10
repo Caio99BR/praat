@@ -8,6 +8,7 @@ on:
 jobs:
   BuildLinux:
     strategy:
+      fail-fast: false
       matrix:
         include:
           - version: clang
@@ -18,6 +19,34 @@ jobs:
             makefile: makefile.defs.linux.pulse-clang
             binary: praat
             extension: ""
+            continue: false
+          - version: arm32
+            targetos: linux
+            ccache_path: sccache
+            toolchain: ""
+            prefix: arm-linux-gnueabihf-
+            makefile: makefile.defs.linux.rpi
+            binary: praat
+            extension: ""
+            continue: true
+          - version: arm64
+            targetos: linux
+            ccache_path: sccache
+            toolchain: ""
+            prefix: aarch64-linux-gnu-
+            makefile: makefile.defs.linux.rpi
+            binary: praat
+            extension: ""
+            continue: true
+          - version: s390x
+            targetos: linux
+            ccache_path: sccache
+            toolchain: ""
+            prefix: ""
+            makefile: makefile.defs.linux.s390x.pulse
+            binary: praat
+            extension: ""
+            continue: true
 
     name: Praat (${{ matrix.targetos }}) (${{ matrix.version }})
     runs-on: ubuntu-22.04
@@ -39,6 +68,7 @@ jobs:
           tar -xvf ${{ matrix.toolchain }}.tar.xz
 
       - name: Build Praat (${{ matrix.targetos }})
+        continue-on-error: ${{ matrix.continue }}
         run: |
           cp makefiles/${{ matrix.makefile }} makefile.defs
 
@@ -46,7 +76,7 @@ jobs:
           if [ "${{ matrix.toolchain }}" != "" ]; then
             PREFIX="$(pwd)/${{ matrix.toolchain }}/bin/${{ matrix.prefix }}"
           else
-            PREFIX=""
+            PREFIX="${{ matrix.prefix }}"
           fi
 
           # Unify the make command, only CC and CXX change
@@ -63,6 +93,27 @@ jobs:
         with:
           name: Praat-${{ matrix.targetos }}_${{ matrix.version }}
           path: Praat-${{ matrix.targetos }}_${{ matrix.version }}${{ matrix.extension }}
+
+  BuildChrome64:
+    name: Praat (chrome64)
+    runs-on: ubuntu-22.04
+    container:
+      image: gcr.io/chromiumos-sdk/cros-sdk
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build for ChromeOS 64-bit (chrome64)
+        continue-on-error: true
+        run: |
+          cp makefiles/makefile.defs.linux.chrome64 makefile.defs
+          make -j$(nproc) CC=clang CXX=clang++
+          cp praat Praat-linux_chrome64
+
+      - name: Upload binary (Praat-linux_chrome64)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Praat-linux_chrome64
+          path: Praat-linux_chrome64
 
   BuildWindows:
     strategy:
@@ -120,7 +171,7 @@ jobs:
           if [ "${{ matrix.toolchain }}" != "" ]; then
             PREFIX="$(pwd)/${{ matrix.toolchain }}/bin/${{ matrix.prefix }}"
           else
-            PREFIX=""
+            PREFIX="${{ matrix.prefix }}"
           fi
 
           # Unify the make command, only CC and CXX change
@@ -152,7 +203,7 @@ jobs:
         with:
           name: Praat-${{ matrix.targetos }}_${{ matrix.version }}
 
-      - name: Install xvfb and dependencies
+      - name: Install dependencies
         run: |
           sudo apt update
           sudo apt install -y libgtk-3-0 libasound2 libpulse0 libjack0
@@ -160,8 +211,8 @@ jobs:
       - name: Run Praat tests
         run: |
           chmod +x ./Praat-${{ matrix.targetos }}_${{ matrix.version }}
-          ./Praat-${{ matrix.targetos }}_${{ matrix.version }}${{ matrix.extension }} --run test/runAllTests_batch.praat
-          ./Praat-${{ matrix.targetos }}_${{ matrix.version }}${{ matrix.extension }} --run dwtest/runAllTests_batch.praat
+          ./Praat-${{ matrix.targetos }}_${{ matrix.version }}${{ matrix.extension }} -a --run test/runAllTests_batch.praat
+          ./Praat-${{ matrix.targetos }}_${{ matrix.version }}${{ matrix.extension }} -a --run dwtest/runAllTests_batch.praat
 
   TestWindows:
     name: Run Windows tests
@@ -198,5 +249,69 @@ jobs:
       - name: Run Praat tests
         shell: pwsh
         run: |
-          .\Praat-${{ matrix.targetos }}_${{ matrix.version }}${{ matrix.extension }} --run test/runAllTests_batch.praat
-          .\Praat-${{ matrix.targetos }}_${{ matrix.version }}${{ matrix.extension }} --run dwtest/runAllTests_batch.praat
+          .\Praat-${{ matrix.targetos }}_${{ matrix.version }}${{ matrix.extension }} -a --run test/runAllTests_batch.praat
+          .\Praat-${{ matrix.targetos }}_${{ matrix.version }}${{ matrix.extension }} -a --run dwtest/runAllTests_batch.praat
+
+  TestChrome64:
+    name: Run Chrome64 tests
+    needs: BuildChrome64
+    runs-on: ubuntu-22.04
+    container:
+      image: ghcr.io/chromium/chromium:latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: Praat-linux_chrome64
+
+      - name: Run Chrome64-specific tests
+        continue-on-error: true
+        run: |
+          chmod +x ./Praat-linux_chrome64
+          ./Praat-linux_chrome64 -a --run test/runAllTests_batch.praat
+          ./Praat-linux_chrome64 -a --run dwtest/runAllTests_batch.praat
+
+  TestS390x:
+    name: Run s390x tests
+    needs: BuildLinux
+    runs-on: ubuntu-22.04
+    container:
+      image: multiarch/qemu-user-static:s390x
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: Praat-linux_s390x
+
+      - name: Run s390x-specific tests
+        continue-on-error: true
+        run: |
+          chmod +x ./Praat-linux_s390x
+          ./Praat-linux_s390x -a --run test/runAllTests_batch.praat
+          ./Praat-linux_s390x -a --run dwtest/runAllTests_batch.praat
+
+  TestRpi:
+    name: Run Raspberry Pi tests
+    needs: BuildLinux
+    strategy:
+      matrix:
+        include:
+          - version: arm64
+            arch: rpi64
+          - version: arm32
+            arch: rpi32
+    runs-on: ubuntu-22.04
+    container:
+      image: arm64v8/debian:bullseye-slim
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: Praat-linux_${{ matrix.version }}
+
+      - name: Run Raspberry Pi-specific tests
+        continue-on-error: true
+        run: |
+          chmod +x ./Praat-linux_${{ matrix.version }}
+          ./Praat-linux_${{ matrix.version }} -a --run test/runAllTests_batch.praat
+          ./Praat-linux_${{ matrix.version }} -a --run dwtest/runAllTests_batch.praat
