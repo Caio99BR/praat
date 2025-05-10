@@ -160,8 +160,8 @@ jobs:
       - name: Run Praat tests
         run: |
           chmod +x ./Praat-${{ matrix.targetos }}_${{ matrix.version }}
-          ./Praat-${{ matrix.targetos }}_${{ matrix.version }}${{ matrix.extension }} --run test/runAllTests.praat
-          ./Praat-${{ matrix.targetos }}_${{ matrix.version }}${{ matrix.extension }} --run dwtest/runAllTests.praat
+          ./Praat-${{ matrix.targetos }}_${{ matrix.version }}${{ matrix.extension }} --run test/runAllTests_batch.praat
+          ./Praat-${{ matrix.targetos }}_${{ matrix.version }}${{ matrix.extension }} --run dwtest/runAllTests_batch.praat
 
   TestWindows:
     name: Run Windows tests
@@ -198,5 +198,5 @@ jobs:
       - name: Run Praat tests
         shell: pwsh
         run: |
-          .\Praat-${{ matrix.targetos }}_${{ matrix.version }}${{ matrix.extension }} --run test/runAllTests.praat
-          .\Praat-${{ matrix.targetos }}_${{ matrix.version }}${{ matrix.extension }} --run dwtest/runAllTests.praat
+          .\Praat-${{ matrix.targetos }}_${{ matrix.version }}${{ matrix.extension }} --run test/runAllTests_batch.praat
+          .\Praat-${{ matrix.targetos }}_${{ matrix.version }}${{ matrix.extension }} --run dwtest/runAllTests_batch.praat
