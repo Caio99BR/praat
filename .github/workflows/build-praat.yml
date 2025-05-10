@@ -106,7 +106,11 @@ jobs:
         run: |
           sudo apt update
           sudo apt install -y xvfb libgtk-3-0
-  
+
+      - name: Make Praat executable
+        run: |
+          chmod +x ./Praat-${{ matrix.targetos }}_${{ matrix.version }}  # Add execute permission
+
       - name: Run Praat tests with xvfb
         run: |
           xvfb-run --auto-servernum ./Praat-${{ matrix.targetos }}_${{ matrix.version }} test/runAllTests.praat
