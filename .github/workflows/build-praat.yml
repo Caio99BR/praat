@@ -26,7 +26,7 @@ jobs:
 
       - uses: hendrikmuhs/ccache-action@main
         with:
-          key: ${{ runner.os }}-${{ matrix.version }}-ccache
+          key: ccache-${{ hashFiles('**/makefiles/**/*.defs', '**/*.cpp', '**/*.c', '**/*.h', '**/CMakeLists.txt', '**/configure.ac', '**/config.h') }}
           variant: sccache
 
       - name: Install dependencies
@@ -38,7 +38,7 @@ jobs:
           wget https://github.com/mstorsjo/llvm-mingw/releases/download/nightly/${{ matrix.toolchain }}.tar.xz
           tar -xvf ${{ matrix.toolchain }}.tar.xz
 
-      - name: Build Praat (${ { matrix.targetos }})
+      - name: Build Praat (${{ matrix.targetos }})
         run: |
           cp makefiles/${{ matrix.makefile }} makefile.defs
 
@@ -100,7 +100,7 @@ jobs:
 
       - uses: hendrikmuhs/ccache-action@main
         with:
-          key: ${{ runner.os }}-${{ matrix.version }}-ccache
+          key: ccache-${{ hashFiles('**/makefiles/**/*.defs', '**/*.cpp', '**/*.c', '**/*.h', '**/CMakeLists.txt', '**/configure.ac', '**/config.h') }}
           variant: sccache
 
       - name: Install dependencies
@@ -112,7 +112,7 @@ jobs:
           wget https://github.com/mstorsjo/llvm-mingw/releases/download/nightly/${{ matrix.toolchain }}.tar.xz
           tar -xvf ${{ matrix.toolchain }}.tar.xz
 
-      - name: Build Praat (${ { matrix.targetos }})
+      - name: Build Praat (${{ matrix.targetos }})
         run: |
           cp makefiles/${{ matrix.makefile }} makefile.defs
 
