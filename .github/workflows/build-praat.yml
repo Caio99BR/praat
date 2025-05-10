@@ -82,21 +82,57 @@ jobs:
           # Copy binary output with platform and version specific naming
           cp ${{ matrix.binary }} Praat-${{ matrix.targetos }}_${{ matrix.version }}${{ matrix.extension }}
 
-      - name: Run tests (Linux)
-        if: matrix.targetos == 'linux'
-        run: |
-          ./Praat-${{ matrix.targetos }}_${{ matrix.version }}${{ matrix.extension }} test/runAllTests.praat
-          ./Praat-${{ matrix.targetos }}_${{ matrix.version }}${{ matrix.extension }} dwtest/runAllTests.praat
-
-      - name: Run tests (Windows)
-        if: matrix.targetos == 'windows'
-        shell: msys2 {0}
-        run: |
-          ./Praat-${{ matrix.targetos }}_${{ matrix.version }}${{ matrix.extension }} --run test/runAllTests.praat
-          ./Praat-${{ matrix.targetos }}_${{ matrix.version }}${{ matrix.extension }} --run dwtest/runAllTests.praat
-
       - name: Upload binary
         uses: actions/upload-artifact@v4
         with:
-          name: Praat for ${{ matrix.targetos }} ${{ matrix.version }}
+          # Including matrix variables in the artifact name
+          name: Praat-${{ matrix.targetos }}_${{ matrix.version }}
           path: Praat-${{ matrix.targetos }}_${{ matrix.version }}${{ matrix.extension }}
+
+  TestLinux:
+    name: Run Linux tests
+    runs-on: ubuntu-22.04
+    needs: Build
+    strategy:
+      matrix:
+        version: [clang]  # Specify versions for Linux
+        targetos: [linux]  # Target only Linux
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: Praat-${{ matrix.targetos }}_${{ matrix.version }}  # Download artifact for the correct version
+  
+      - name: Install xvfb and dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y xvfb libgtk-3-0
+  
+      - name: Run Praat tests with xvfb
+        run: |
+          xvfb-run --auto-servernum ./Praat-${{ matrix.targetos }}_${{ matrix.version }} test/runAllTests.praat
+          xvfb-run --auto-servernum ./Praat-${{ matrix.targetos }}_${{ matrix.version }} dwtest/runAllTests.praat
+
+  TestWindows:
+    name: Run Windows tests
+    runs-on: windows-latest
+    needs: Build
+    strategy:
+      matrix:
+        version: [aarch64, x86_64, intel32]  # Specify versions for windows
+        targetos: [windows]  # Target only Windows
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: Praat-${{ matrix.targetos }}_${{ matrix.version }}  # Download artifact for the correct version
+  
+      - uses: msys2/setup-msys2@v2
+        with:
+          update: true
+          install: base-devel
+  
+      - name: Run Praat tests in MSYS2 shell
+        shell: msys2 {0}
+        run: |
+          # Run tests for the specific version dynamically
+          ./Praat-${{ matrix.targetos }}_${{ matrix.version }}.exe --run test/runAllTests.praat
+          ./Praat-${{ matrix.targetos }}_${{ matrix.version }}.exe --run dwtest/runAllTests.praat
