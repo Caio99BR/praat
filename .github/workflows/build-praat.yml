@@ -59,7 +59,7 @@ jobs:
           variant: sccache
 
       - name: Install dependencies
-        run: sudo apt install -y libgtk-3-dev libasound2-dev libpulse-dev libjack-dev binutils-mingw-w64
+        run: sudo apt install -y libgtk-3-dev libasound2-dev libpulse-dev libjack-dev binutils-mingw-w64 clang-12 aarch64-linux-gnu-clang arm-linux-gnueabihf-clang
 
       - name: Download and Install LLVM-Mingw toolchain (only for Windows)
         if: matrix.targetos == 'windows'
@@ -98,7 +98,7 @@ jobs:
     name: Praat (chrome64)
     runs-on: ubuntu-22.04
     container:
-      image: gcr.io/chromiumos-sdk/cros-sdk
+      image: selenium/standalone-chrome:latest
     steps:
       - uses: actions/checkout@v4
 
@@ -240,14 +240,8 @@ jobs:
         with:
           name: Praat-${{ matrix.targetos }}_${{ matrix.version }}
 
-      - name: Check files before run
-        shell: pwsh
-        run: |
-          Get-ChildItem
-          Get-ChildItem test
-
       - name: Run Praat tests
-        shell: pwsh
+        shell: cmd
         run: |
           .\Praat-${{ matrix.targetos }}_${{ matrix.version }}${{ matrix.extension }} -a --run test/runAllTests_batch.praat
           .\Praat-${{ matrix.targetos }}_${{ matrix.version }}${{ matrix.extension }} -a --run dwtest/runAllTests_batch.praat
@@ -257,7 +251,7 @@ jobs:
     needs: BuildChrome64
     runs-on: ubuntu-22.04
     container:
-      image: ghcr.io/chromium/chromium:latest
+      image: selenium/standalone-chrome:latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
