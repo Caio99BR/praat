@@ -183,14 +183,15 @@ jobs:
         with:
           name: Praat-${{ matrix.targetos }}_${{ matrix.version }}  # Download artifact for the correct version
 
-      - uses: msys2/setup-msys2@v2
-        with:
-          update: true
-          install: base-devel
+      - name: Check files before run
+        shell: pwsh
+        run: |
+          Get-ChildItem
+          Get-ChildItem test
 
-      - name: Run Praat tests in MSYS2 shell
-        shell: msys2 {0}
+      - name: Run Praat tests in PowerShell
+        shell: pwsh
         run: |
           # Run tests for the specific version dynamically
-          ./Praat-${{ matrix.targetos }}_${{ matrix.version }}${{ matrix.extension }} --run test/runAllTests.praat
-          ./Praat-${{ matrix.targetos }}_${{ matrix.version }}${{ matrix.extension }} --run dwtest/runAllTests.praat
+          .\Praat-${{ matrix.targetos }}_${{ matrix.version }}${{ matrix.extension }} --run test/runAllTests.praat
+          .\Praat-${{ matrix.targetos }}_${{ matrix.version }}${{ matrix.extension }} --run dwtest/runAllTests.praat
