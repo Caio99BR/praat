@@ -163,6 +163,9 @@ jobs:
 
       - name: Run Praat tests with xvfb
         run: |
+          export NO_AT_BRIDGE=1
+          ldd ././Praat-${{ matrix.targetos }}_${{ matrix.version }}${{ matrix.extension }}
+          ././Praat-${{ matrix.targetos }}_${{ matrix.version }}${{ matrix.extension }} --version
           xvfb-run --auto-servernum ./Praat-${{ matrix.targetos }}_${{ matrix.version }}${{ matrix.extension }} test/runAllTests.praat
           xvfb-run --auto-servernum ./Praat-${{ matrix.targetos }}_${{ matrix.version }}${{ matrix.extension }} dwtest/runAllTests.praat
 
