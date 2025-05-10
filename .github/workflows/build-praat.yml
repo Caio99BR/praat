@@ -26,7 +26,7 @@ jobs:
 
       - uses: hendrikmuhs/ccache-action@main
         with:
-          key: ccache-${{ hashFiles('**/makefiles/**/*.defs', '**/*.cpp', '**/*.c', '**/*.h', '**/CMakeLists.txt', '**/configure.ac', '**/config.h') }}
+          key: ${{ matrix.targetos }}-${{ matrix.version }}-ccache
           variant: sccache
 
       - name: Install dependencies
@@ -100,7 +100,7 @@ jobs:
 
       - uses: hendrikmuhs/ccache-action@main
         with:
-          key: ccache-${{ hashFiles('**/makefiles/**/*.defs', '**/*.cpp', '**/*.c', '**/*.h', '**/CMakeLists.txt', '**/configure.ac', '**/config.h') }}
+          key: ${{ matrix.targetos }}-${{ matrix.version }}-ccache
           variant: sccache
 
       - name: Install dependencies
