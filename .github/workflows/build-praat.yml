@@ -170,9 +170,6 @@ jobs:
         version: [clang]
         targetos: [linux]
     steps:
-      - name: Ensure consistent line endings
-        run: git config --global core.autocrlf input
-
       - uses: actions/checkout@v4
 
       - uses: actions/download-artifact@v4
@@ -211,9 +208,6 @@ jobs:
             extension: .exe
     runs-on: ${{ matrix.runner }}
     steps:
-      - name: Ensure consistent line endings
-        run: git config --global core.autocrlf input
-
       - uses: actions/checkout@v4
 
       - uses: actions/download-artifact@v4
@@ -246,9 +240,6 @@ jobs:
             extension: .dmg
     runs-on: ${{ matrix.runner }}
     steps:
-      - name: Ensure consistent line endings
-        run: git config --global core.autocrlf input
-
       - uses: actions/checkout@v4
 
       - uses: actions/download-artifact@v4
