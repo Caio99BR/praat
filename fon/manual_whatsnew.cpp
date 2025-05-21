@@ -1,10 +1,10 @@
 /* manual_whatsnew.cpp
  *
- * Copyright (C) 1992-2024 Paul Boersma
+ * Copyright (C) 1992-2025 Paul Boersma
  *
  * This code is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or (at
+ * the Free Software Foundation; either version 3 of the License, or (at
  * your option) any later version.
  *
  * This code is distributed in the hope that it will be useful, but
@@ -28,6 +28,18 @@ R"~~~(
 © Paul Boersma 1995–2025
 
 Latest changes in Praat.
+
+##6.4.34# (20 May 2025)
+• Linux: made @`demoShow` () work again on GTK 3.
+• Scripting: @`clock` ().
+
+##6.4.33# (18 May 2025)
+• H1-minus-H2 in the voice report.
+• Repaired an old bug that made spectrogram computation in the Sound window crash under some uncommon combinations of settings.
+
+##6.4.32# (14 May 2025)
+• Better continuity of integration of energy (finally corresponds to manual).
+• Scripting: more reliable @`random_initializeWithSeedUnsafelyButPredictably` (works even after an odd number of @`randomGauss`).
 
 ##6.4.31# (3 May 2025)
 • TextGrid window: rubber banding within the selection,
